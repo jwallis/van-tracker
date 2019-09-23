@@ -50,8 +50,9 @@
 #define FONA_TX 3
 #define FONA_RST 4
 
-#define KILL_SWITCH_PIN 5
-#define GEOFENCE_PIN 6
+#define KILL_SWITCH_PIN_A 5
+#define KILL_SWITCH_PIN_B 6
+#define GEOFENCE_PIN 7
 
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
 SoftwareSerial *fonaSerial = &fonaSS;
@@ -68,8 +69,9 @@ Adafruit_FONA fona = Adafruit_FONA(FONA_RST);    //Adafruit_FONA_3G fona = Adafr
 #define GEOFENCETZ_CHAR_4           32
 #define GEOFENCESTART_CHAR_3        36
 #define GEOFENCEEND_CHAR_3          39
-#define KILLSWITCHSTATUS_BOOL_1     42
-#define OWNERPHONENUMBER_CHAR_15    43
+#define GEOFENCEFOLLOW_BOOL_1       42
+#define KILLSWITCHSTATUS_BOOL_1     43
+#define OWNERPHONENUMBER_CHAR_15    44
 
 uint8_t totalErrors = 0;
 short lastGPSQueryMinute = -1;
@@ -85,8 +87,8 @@ void loop() {
   
 #ifdef VANTEST
   checkSerialInput();
-#endif
   flushFONA();
+#endif
   checkSMSInput();
   watchDog();
 
@@ -102,6 +104,8 @@ void watchDog() {
 void watchDogForErrors() {
   if (totalErrors > 10) {
     debugPrintln(F("_____________ TOTAL ERRORS > 10 _______________"));
+    fixErrors("watchDogForErrors()");
+    totalErrors = 0;
   }
 }
 
@@ -126,14 +130,12 @@ void watchDogForTurnOffGPS() {
   // lastQuery = 10, current = 20
   if (lastGPSQueryMinute < currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 20) {
       setFONAGPS(false);
-      sendSMS("5127500974", "watchDogForTurnOffGPS part 1");
       lastGPSQueryMinute = -1;
   }
 
   // lastQuery = 50, current = 10
   if (lastGPSQueryMinute > currentMinuteInt && lastGPSQueryMinute - currentMinuteInt < 40) {
       setFONAGPS(false);
-      sendSMS("5127500974", "watchDogForTurnOffGPS part 2");
       lastGPSQueryMinute = -1;
   }
 }
@@ -152,7 +154,15 @@ void updatelastGPSQueryMinute() {
 }
 
 void watchDogForGeofence() {
-  if (!isGeofenceEnabled()) {
+
+  bool follow;
+  EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
+
+  //TBD physical override switch (just an on/off switch for the whole unit.  kill switch relay must be Normally Closed)
+  
+  //TBD make this more like every few minutes
+  // use same algorithm as watchDogForTurnOffGPS()
+  if (!isGeofenceEnabled() && !follow) {
     return;
   }
 
@@ -161,7 +171,7 @@ void watchDogForGeofence() {
 
   getGPSLatLon(currentLat, currentLon);
 
-  if (outsideGeofence(currentLat, currentLon)) {
+  if (outsideGeofence(currentLat, currentLon) || follow) {
 
     char geofenceHomeLat[12];
     char geofenceHomeLon[12];
@@ -176,9 +186,14 @@ void watchDogForGeofence() {
   }
 }
 
-void fixErrors() {
-  //TBD
-  debugPrintln(F("FIXXXX ERRRRROORRRRSSSS"));
+void fixErrors(char* message) {
+
+  //TBD do something good here
+  char ownerPhoneNumber[15];
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
+  sendSMS(ownerPhoneNumber, message);
+  debugPrintln(message);
 }
 
 void checkSMSInput() {
@@ -244,6 +259,12 @@ void handleSMSInput() {
       continue;
     }
 
+    if (strstr(smsValue, "follow")) {
+      handleFollowReq(smsSender, smsValue);
+      deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     if (strstr(smsValue, "owner")) {
       handleOwnerPhoneNumberReq(smsSender, smsValue);
       deleteSMS(smsSlotNumber);
@@ -293,17 +314,33 @@ void handleKillSwitchReq(char* smsSender, char* smsValue) {
   char message[40] = "";
 
   if (strstr(smsValue, "enable") ) {
-    digitalWrite(KILL_SWITCH_PIN, HIGH);
     EEPROM.put(KILLSWITCHSTATUS_BOOL_1, true);
     strcpy(message, "Kill Switch: ENABLED");
   }
   if (strstr(smsValue, "disable") ) {
-    digitalWrite(KILL_SWITCH_PIN, LOW);
     EEPROM.put(KILLSWITCHSTATUS_BOOL_1, false);
     strcpy(message, "Kill Switch: DISABLED");
   }
   if (!message[0]) {
     strcpy(message, "Try \"kill\" plus:\nenable/disable");
+  }
+  setKillSwitchPins();
+  sendSMS(smsSender, message);
+}
+
+void handleFollowReq(char* smsSender, char* smsValue) {
+  char message[40] = "";
+
+  if (strstr(smsValue, "enable") ) {
+    EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
+    strcpy(message, "Follow: ENABLED");
+  }
+  if (strstr(smsValue, "disable") ) {
+    EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
+    strcpy(message, "Follow: DISABLED");
+  }
+  if (!message[0]) {
+    strcpy(message, "Try \"follow\" plus:\nenable/disable");
   }
   sendSMS(smsSender, message);
 }
@@ -311,7 +348,7 @@ void handleKillSwitchReq(char* smsSender, char* smsValue) {
 void handleGeofenceReq(char* smsSender, char* smsValue) {
   char message[132] = "";
 
-  boolean geofenceEnabled;
+  bool geofenceEnabled;
   char geofenceStart[3];
   char geofenceEnd[3];
   char geofenceTZ[4];
@@ -328,17 +365,18 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
 
 
   if (strstr(smsValue, "enable") ) {
-    digitalWrite(GEOFENCE_PIN, HIGH);
     EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
     geofenceEnabled = true;
     message[0] = '1';
   }
   if (strstr(smsValue, "disable") ) {
-    digitalWrite(GEOFENCE_PIN, LOW);
     EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
     geofenceEnabled = false;
     message[0] = '1';
   }
+  
+  setGeofencePins();
+  
   if (strstr(smsValue, "radius")) {
     geofenceRadius[0] = '\0';
     if (getNumberFromString(smsValue, geofenceRadius, 7)) {
@@ -363,6 +401,8 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
       message[0] = '1';
     }
   }
+  //TBD remove zone
+  //TBD change enable/disable to on/off
   if (strstr(smsValue, "zone")) {
     // google.com/search?q=what+is+my+timezone
     geofenceTZ[0] = '\0';
@@ -432,10 +472,10 @@ void handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
 }
 
 void handleUnknownReq(char* smsSender) {
-  sendSMS(smsSender, "Commands:\ninfo\nloc\nowner\nkill\nfence");
+  sendSMS(smsSender, "Commands:\ninfo\nloc\nowner\nkill\nfence\nfollow");
 }
 
-boolean isSMSSlotFilled(int8_t smsSlotNumber) {
+bool isSMSSlotFilled(int8_t smsSlotNumber) {
   char smsSender[15];
 
   // TBD would be nice to check for errors here, totalErrors++
@@ -499,7 +539,7 @@ void getBatteryStats(char* batteryStats) {
 ////////////////////////////////
 //GPS
 
-void setFONAGPS(boolean tf) {
+void setFONAGPS(bool tf) {
   // turns FONA GPS on or off (don't waste power)
   if (!tf) {
     fona.enableGPS(false);
@@ -583,7 +623,7 @@ void getTime(char* currentTime) {
 ////////////////////////////////
 //GEOFENCE
 
-boolean setGeofenceHours(char* smsValue, char* geofenceStart, char* geofenceEnd) {
+bool setGeofenceHours(char* smsValue, char* geofenceStart, char* geofenceEnd) {
   // smsValue:
   // fence hours 0 21
   // 0 21 means 12am - 9pm
@@ -593,11 +633,11 @@ boolean setGeofenceHours(char* smsValue, char* geofenceStart, char* geofenceEnd)
   return (geofenceStart[0] && geofenceEnd[0]);
 }
 
-boolean isGeofenceEnabled() {
+bool isGeofenceEnabled() {
   // takes into account both "geofenceEnabled" option
   // as well as the hours 1am-8am option
 
-  boolean geofenceEnabled;
+  bool geofenceEnabled;
   EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
   if (!geofenceEnabled)
     return false;
@@ -720,11 +760,11 @@ void toLower(char* str) {
     str[i] = tolower(str[i]);
 }
 
-boolean getNumberFromString(char* in, char* out, short maxLen) {
+bool getNumberFromString(char* in, char* out, short maxLen) {
   // if in == "aaa+123bbb"
   // then out = "+123"
   // be sure to leave room for '\0'
-  boolean foundNumber = false;
+  bool foundNumber = false;
   short outCount = 0;
 
   for (int i = 0; in[i] && outCount < maxLen-1; i++) {
@@ -742,7 +782,7 @@ boolean getNumberFromString(char* in, char* out, short maxLen) {
   return foundNumber;
 }
 
-boolean getOccurrenceInDelimitedString(char* in, char* out, short occur, char delim) {
+bool getOccurrenceInDelimitedString(char* in, char* out, short occur, char delim) {
   // if in == "a,b,c"
   // and occur = 2
   // and delim = ','
@@ -750,7 +790,7 @@ boolean getOccurrenceInDelimitedString(char* in, char* out, short occur, char de
   // be sure to leave room for '\0'
   short delimCount = 0;
   short outCount = 0;
-  boolean foundOccurrence = false;
+  bool foundOccurrence = false;
 
   for (int i = 0; in[i]; i++) {
     if (in[i] == delim) {
@@ -773,7 +813,7 @@ boolean getOccurrenceInDelimitedString(char* in, char* out, short occur, char de
   return foundOccurrence;
 }
 
-boolean outsideGeofence(char* lat1Str, char* lon1Str) {
+bool outsideGeofence(char* lat1Str, char* lon1Str) {
   char geofenceRadius[7];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
@@ -827,13 +867,28 @@ void flushFONA() {
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-//SETUP
+//SETUP & PINS
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void pinSetup() {
   pinMode(GEOFENCE_PIN, OUTPUT);
-  pinMode(KILL_SWITCH_PIN, OUTPUT);
+  pinMode(KILL_SWITCH_PIN_A, OUTPUT);
+  pinMode(KILL_SWITCH_PIN_B, OUTPUT);
+  setKillSwitchPins();
+  setGeofencePins();
 }
+
+void setKillSwitchPins() {
+  bool tf = EEPROM.get(KILLSWITCHSTATUS_BOOL_1, tf);
+  digitalWrite(KILL_SWITCH_PIN_A, tf);
+  digitalWrite(KILL_SWITCH_PIN_B, tf);
+}
+
+void setGeofencePins() {
+  bool tf = EEPROM.get(GEOFENCEENABLED_BOOL_1, tf);
+  digitalWrite(GEOFENCE_PIN, tf);
+}
+
 
 void setupSerialAndFONA() {
 #ifdef VANTEST
@@ -860,7 +915,7 @@ void waitUntilSMSReady() {
     }
     delay(1000);
   }
-  fixErrors();
+  fixErrors("waitUntilSMSReady()");
 }
 
 void moreSetup() {
@@ -920,7 +975,7 @@ void debugPrintln(short s) {
   Serial.println(s);
 #endif
 }
-void debugPrintln(boolean b) {
+void debugPrintln(bool b) {
 #ifdef VANTEST
   Serial.println(b);
 #endif
@@ -951,7 +1006,7 @@ void putEEPROM() {
 
 void getEEPROM() {
   char tempc[13];
-  boolean tempb;
+  bool tempb;
 
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, tempc);
   Serial.write ("GEOFENCEHOMELAT_CHAR_12: ");
@@ -1269,7 +1324,7 @@ uint16_t readnumber() {
 
 //uint8_t readline(char *buff, uint8_t maxbuff, uint16_t timeout) {
 //  uint16_t buffidx = 0;
-//  boolean timeoutvalid = true;
+//  bool timeoutvalid = true;
 //  if (timeout == 0) timeoutvalid = false;
 //
 //  while (true) {
