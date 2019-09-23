@@ -1,0 +1,3 @@
+mode,fixstatus,utctime(yyyymmddHHMMSS),latitude,longitude,altitude,speed,course,fixmode,reserved1,HDOP,PDOP,VDOP,reserved2,view_satellites,used_satellites,reserved3,C/N0max,HPA,VPA
+1,0,20190910235931.000,,,,2.26,332.1,0,,,,,,14,6,,,40,,
+1,1,20190910235947.000,30.223880,-97.792025,203.800,0.31,80.8,1,,0.9,1.1,0.7,,14,9,,,40,,
