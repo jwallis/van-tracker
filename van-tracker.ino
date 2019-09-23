@@ -23,10 +23,8 @@
    15.fence hours
    16.fence hours 23
    17.fence hours 23 8
-   18.fence zone
-   19.fence zone -11
-   20.fence radius
-   21.fence radius 234
+   18.fence radius
+   19.fence radius 234
 */
 
 #define VANTEST
@@ -40,7 +38,6 @@
 // AT+CLTS=1                      // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
 // AT&W                           // save writeable settings
 // restart modele
-// AT+CCLK?                       // should be correct clock (but timezone is still wrong
 
 #include "Adafruit_FONA.h"
 #include <SoftwareSerial.h>
@@ -401,24 +398,14 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
       message[0] = '1';
     }
   }
-  //TBD remove zone
   //TBD change enable/disable to on/off
-  if (strstr(smsValue, "zone")) {
-    // google.com/search?q=what+is+my+timezone
-    geofenceTZ[0] = '\0';
-    if (getNumberFromString(smsValue, geofenceTZ, 4)) {
-      // divide # by 4 to get correct time zone
-      EEPROM.put(GEOFENCETZ_CHAR_4, geofenceTZ);
-      message[0] = '1';
-    }
-  }
 
   if (message[0] || strstr(smsValue, "info")) {
     //    Yay only 2k of RAM, this saves 54 bytes!!!!!!!
     //    if (geofenceEnabled)
-    //      sprintf(message, "ENABLED\nHours: %s-%s\nZone: %s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceTZ, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
+    //      sprintf(message, "ENABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
     //    else
-    //      sprintf(message, "DISABLED\nHours: %s-%s\nZone: %s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceTZ, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
+    //      sprintf(message, "DISABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
 
     if (geofenceEnabled)
       strcpy(message, "EN");
@@ -429,8 +416,6 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     strcat(message, geofenceStart);
     strcat(message, "-");
     strcat(message, geofenceEnd);
-    strcat(message, "\nZone: ");
-    strcat(message, geofenceTZ);
     strcat(message, "\nRadius: ");
     strcat(message, geofenceRadius);
     strcat(message, " feet\nHome: google.com/search?q=");
@@ -441,7 +426,7 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     sendSMS(smsSender, message);
   }
   else {
-    sendSMS(smsSender, "Try \"fence\" plus:\nenable/disable\ninfo\nhome (uses current loc)\nhours 0 21 (12am-9pm)\nzone -6 (CST)\nradius 100 (100 feet)");
+    sendSMS(smsSender, "Try \"fence\" plus:\nenable/disable\ninfo\nhome (uses current loc)\nhours 0 21 (12am-9pm)\nradius 100 (100 feet)");
   }
 }
 
