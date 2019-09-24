@@ -27,8 +27,13 @@
    19.fence radius 234
 */
 
-#define VANTEST
-//#define VANPROD
+//TBD physical override switch (just an on/off switch for the whole unit.  kill switch relay must be Normally Closed)
+//TBD change enable/disable to on/off ? 
+
+
+
+//#define VAN_TEST
+#define VAN_PROD
 
 
 // Initialize the FONA module:
@@ -43,19 +48,19 @@
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 
-#define FONA_RX 2
-#define FONA_TX 3
-#define FONA_RST 4
+#define FONA_RX_PIN 2
+#define FONA_TX_PIN 3
+#define RESET_PIN 4
 
 #define KILL_SWITCH_PIN_A 5
 #define KILL_SWITCH_PIN_B 6
 #define GEOFENCE_PIN 7
 
-SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
+SoftwareSerial fonaSS = SoftwareSerial(FONA_TX_PIN, FONA_RX_PIN);
 SoftwareSerial *fonaSerial = &fonaSS;
 //HardwareSerial *fonaSerial = &Serial;
 
-Adafruit_FONA fona = Adafruit_FONA(FONA_RST);    //Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
+Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
 
 #define APN_ID "wholesale"
@@ -72,6 +77,7 @@ Adafruit_FONA fona = Adafruit_FONA(FONA_RST);    //Adafruit_FONA_3G fona = Adafr
 
 uint8_t totalErrors = 0;
 short lastGPSQueryMinute = -1;
+short lastGeofenceWarningMinute = -1;
 
 void setup() {
   pinSetup();
@@ -81,14 +87,13 @@ void setup() {
 }
 
 void loop() {
-  
-#ifdef VANTEST
+#ifdef VAN_TEST
   checkSerialInput();
   flushFONA();
 #endif
+
   checkSMSInput();
   watchDog();
-
   delay(500);
 }
 
@@ -99,7 +104,7 @@ void watchDog() {
 }
 
 void watchDogForErrors() {
-  if (totalErrors > 10) {
+  if (totalErrors > 3) {
     debugPrintln(F("_____________ TOTAL ERRORS > 10 _______________"));
     fixErrors("watchDogForErrors()");
     totalErrors = 0;
@@ -112,17 +117,9 @@ void watchDogForTurnOffGPS() {
   if (lastGPSQueryMinute == -1)
     return;
 
-  char currentTimeStr[23];
-  char currentMinuteStr[3];
-  short currentMinuteInt;
+  short currentMinuteInt = getCurrentMinuteShort;
 
-  getTime(currentTimeStr);
-
-  // "19/09/19,17:03:01-20"
-  currentMinuteStr[0] = currentTimeStr[13];
-  currentMinuteStr[1] = currentTimeStr[14];
-  currentMinuteStr[2] = '\0';
-  currentMinuteInt = atoi(currentMinuteStr);
+  // if it's been > 20 minutes, take action (turn off gps to save power)
 
   // lastQuery = 10, current = 20
   if (lastGPSQueryMinute < currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 20) {
@@ -137,7 +134,8 @@ void watchDogForTurnOffGPS() {
   }
 }
 
-void updatelastGPSQueryMinute() {
+
+int getCurrentMinuteShort() {
   char currentTimeStr[23];
   char currentMinuteStr[3];
   
@@ -147,20 +145,37 @@ void updatelastGPSQueryMinute() {
   currentMinuteStr[0] = currentTimeStr[13];
   currentMinuteStr[1] = currentTimeStr[14];
   currentMinuteStr[2] = '\0';
-  lastGPSQueryMinute = atoi(currentMinuteStr);
+  return atoi(currentMinuteStr);
+
 }
 
 void watchDogForGeofence() {
-
   bool follow;
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
 
-  //TBD physical override switch (just an on/off switch for the whole unit.  kill switch relay must be Normally Closed)
-  
-  //TBD make this more like every few minutes
-  // use same algorithm as watchDogForTurnOffGPS()
-  if (!isGeofenceEnabled() && !follow) {
+  if (follow) {
+    sendGeofenceWarning(true);
     return;
+  }
+
+  if (!isGeofenceEnabled()) {
+    return;
+  }
+
+  short currentMinuteInt = getCurrentMinuteShort();
+
+  if (lastGeofenceWarningMinute > -1) {
+
+    // if it's been < 5 minutes, do NOT take action
+    // lastQuery = 10, current = 20
+    if (lastGeofenceWarningMinute < currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
+      return;
+    }
+  
+    // lastQuery = 57, current = 05
+    if (lastGeofenceWarningMinute > currentMinuteInt && lastGeofenceWarningMinute - currentMinuteInt > 55) {
+      return;
+    }
   }
 
   char currentLat[12];
@@ -168,19 +183,46 @@ void watchDogForGeofence() {
 
   getGPSLatLon(currentLat, currentLon);
 
-  if (outsideGeofence(currentLat, currentLon) || follow) {
+  if (outsideGeofence(currentLat, currentLon)) {
+    sendGeofenceWarning(false, currentLat, currentLon);
+  }
+}
 
+void sendGeofenceWarning(bool follow) {
+  char currentLat[12];
+  char currentLon[12];
+
+  getGPSLatLon(currentLat, currentLon);
+
+  lastGeofenceWarningMinute = getCurrentMinuteShort();
+  sendGeofenceWarning(follow, currentLat, currentLon);
+}
+
+void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
     char geofenceHomeLat[12];
     char geofenceHomeLon[12];
     char ownerPhoneNumber[15];
     EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
     char message[139];      // SMS max len = 140
 
-    sprintf(message, "GEOFENCE WARNING:\nHome:\ngoogle.com/search?q=%s,%s\nCurrent:\ngoogle.com/search?q=%s,%s\n", geofenceHomeLat, geofenceHomeLon, currentLat, currentLon);
+    if (follow)
+      strcat(message, "FOLLOW MODE");
+    else
+      strcat(message, "GEOFENCE WARNING");
+
+    strcat(message, ":\nHome:\ngoogle.com/search?q=");
+    strcat(message, geofenceHomeLat);
+    strcat(message, ",");
+    strcat(message, geofenceHomeLon);
+    strcat(message, "\nCurrent:\ngoogle.com/search?q=");
+    strcat(message, currentLat);
+    strcat(message, ",");
+    strcat(message, currentLon);
+
     sendSMS(ownerPhoneNumber, message);
-  }
 }
 
 void fixErrors(char* message) {
@@ -191,6 +233,7 @@ void fixErrors(char* message) {
 
   sendSMS(ownerPhoneNumber, message);
   debugPrintln(message);
+  resetFONA();
 }
 
 void checkSMSInput() {
@@ -286,13 +329,16 @@ void handleInfoReq(char* smsSender) {
   char ccid[22];
   char imei[16];
   char message[50];
-  
+
+  char ownerPhoneNumber[15] = "";
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
   getBatteryStats(battery);
   rssi = fona.getRSSI();
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
 
-  sprintf(message, "Battery: %s\nRSSI: %u\nCCID: %s\nIMEI: %s\nAPN: %s", battery, rssi, ccid, imei, APN_ID);
+  sprintf(message, "Battery: %s\nRSSI: %u\nOnwer: %s\nCCID: %s\nIMEI: %s\nAPN: %s", battery, rssi, ownerPhoneNumber, ccid, imei, APN_ID);
   sendSMS(smsSender, message);
 }
 
@@ -398,7 +444,6 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
       message[0] = '1';
     }
   }
-  //TBD change enable/disable to on/off
 
   if (message[0] || strstr(smsValue, "info")) {
     //    Yay only 2k of RAM, this saves 54 bytes!!!!!!!
@@ -588,7 +633,7 @@ void getGPSLatLon(char* latitude, char* longitude) {
 
   setFONAGPS(true);
   fona.getGPS(0, gpsString, 120);
-  updatelastGPSQueryMinute();
+  lastGPSQueryMinute = getCurrentMinuteShort();
 
   // full string:
   // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
@@ -652,7 +697,7 @@ bool isGeofenceEnabled() {
       return true;
     }
   }
-  
+
   return false;
 }
 
@@ -682,7 +727,7 @@ void turnGPRSOn() {
 //SMS
 
 void deleteSMS(uint8_t msg_number) {
-#ifdef VANPROD
+#ifdef VAN_PROD
   for (int i = 2; i < 10; i++) {
     debugPrintln(F("  Attempting to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
@@ -698,7 +743,7 @@ void deleteSMS(uint8_t msg_number) {
 void sendSMS(char* send_to, char* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
-#ifdef VANPROD
+#ifdef VAN_PROD
   if (!fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Failed to send SMS"));
   } else {
@@ -716,6 +761,12 @@ void sendSMS(char* send_to, char* message) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 //HELPERS
 ///////////////////////////////////////////////////////////////////////////////////////////
+
+void resetFONA() {
+  digitalWrite(RESET_PIN, LOW);
+  delay(5000);
+  digitalWrite(RESET_PIN, HIGH);
+}
 
 void insertZero(char *in) {
   // makes "4" => "04"
@@ -746,20 +797,17 @@ void toLower(char* str) {
 }
 
 bool getNumberFromString(char* in, char* out, short maxLen) {
-  // if in == "aaa+123bbb"
-  // then out = "+123"
+  // if in == "aaa+123b-b4b5"
+  // then out = "12345"
   // be sure to leave room for '\0'
   bool foundNumber = false;
   short outCount = 0;
 
   for (int i = 0; in[i] && outCount < maxLen-1; i++) {
-    if ((in[i] >= '0' && in[i] <= '9') || in[i] == '-' || in[i] == '+') {
+    if (in[i] >= '0' && in[i] <= '9') {
       foundNumber = true;
       out[outCount] = in[i];
       outCount++;
-    }
-    if (foundNumber && !((in[i] >= '0' && in[i] <= '9') || in[i] == '-' || in[i] == '+')) {
-      break;
     }
   }
   out[outCount] = '\0';
@@ -856,6 +904,9 @@ void flushFONA() {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void pinSetup() {
+  pinMode(RESET_PIN, OUTPUT);
+  digitalWrite(RESET_PIN, HIGH);
+  
   pinMode(GEOFENCE_PIN, OUTPUT);
   pinMode(KILL_SWITCH_PIN_A, OUTPUT);
   pinMode(KILL_SWITCH_PIN_B, OUTPUT);
@@ -876,7 +927,7 @@ void setGeofencePins() {
 
 
 void setupSerialAndFONA() {
-#ifdef VANTEST
+#ifdef VAN_TEST
   while (!Serial);
   Serial.begin(115200);
 #endif
@@ -905,7 +956,7 @@ void waitUntilSMSReady() {
 
 void moreSetup() {
   setAPN();
-#ifdef VANTEST
+#ifdef VAN_TEST
   printFONAType();
 #endif
 }
@@ -916,52 +967,52 @@ void setAPN() {
 }
 
 void debugPrint(char* str) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.print(str);
 #endif
 }
 void debugPrint(const __FlashStringHelper* str) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.print(str);
 #endif
 }
 void debugPrintln(char* str) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(str);
 #endif
 }
 void debugPrintln(const __FlashStringHelper* str) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(str);
 #endif
 }
 void debugPrintln(float f, int i) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(f, i);
 #endif
 }
 void debugPrintln(String s) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(s);
 #endif
 }
 void debugPrintln(uint16_t s) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(s);
 #endif
 }
 void debugPrintln(int8_t i) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(i);
 #endif
 }
 void debugPrintln(short s) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(s);
 #endif
 }
 void debugPrintln(bool b) {
-#ifdef VANTEST
+#ifdef VAN_TEST
   Serial.println(b);
 #endif
 }
@@ -978,7 +1029,7 @@ void debugPrintln(bool b) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#ifdef VANTEST
+#ifdef VAN_TEST
 
 
 void putEEPROM() {
@@ -1076,9 +1127,6 @@ void handleSerialInput(String command) {
         Serial.write(fona.read());
       }
     }
-  }
-  else {
-    
   }
     //    case 'n': {
     //        // read the network/cellular status
@@ -1190,38 +1238,28 @@ void handleSerialInput(String command) {
     getOccurrenceInDelimitedString(temp, smsValue, 2, '_');
     testHandleSMSInput(smsSender, smsValue);
   }
-    //
-    //
-    //    /******** GPRS is HTTP transport *******/
-    //    /**** we might use for GSM location ****/
-    //    case 'g': {
-    //        turnGPRSOff();
-    //        break;
-    //      }
-    //    case 'G': {
-    //        // turn GPRS on
-    //        if (!fona.enableGPRS(true))
-    //          debugPrintln(F("Failed to turn on"));
-    //        break;
-    //      }
-    //    case 'l': {
-    //        // check for GSMLOC (requires GPRS)
-    //        uint16_t returncode;
-    //
-    //        if (!fona.getGSMLoc(&returncode, replybuffer, 250))
-    //          debugPrintln(F("Failed!"));
-    //        if (returncode == 0) {
-    //          debugPrintln(replybuffer);
-    //        } else {
-    //          Serial.print(F("Fail code #")); debugPrintln(returncode);
-    //        }
-    //
-    //        break;
-    //      }
-    //
-    //
-    //    /*****************************************/
 
+//  if (strcmp(temp, "g") == 0) {
+//    turnGPRSOff();
+//  }
+//  if (strcmp(temp, "G") == 0) {
+//    // turn GPRS on
+//    if (!fona.enableGPRS(true))
+//      debugPrintln(F("Failed to turn on"));
+//  }
+//  if (strcmp(temp, "l") == 0) {
+//    // check for GSMLOC (requires GPRS)
+//    uint16_t returncode;
+//    char replybuffer[120];
+//
+//    if (!fona.getGSMLoc(&returncode, replybuffer, 250))
+//      debugPrintln(F("Failed!"));
+//    if (returncode == 0) {
+//      debugPrintln(replybuffer);
+//    } else {
+//      Serial.print(F("Fail code #")); debugPrintln(returncode);
+//    }
+//  }
 
   flushSerial();
   flushFONA();
