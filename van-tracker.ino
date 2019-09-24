@@ -6,25 +6,25 @@
 
 /*
    Quick TCs
-   1.garbage
-   2.bat
-   3.info
-   4.loc
-   5.owner
-   6.owner set
-   7.owner set 3334445555
-   8.kill
-   9.kill off
-   10.kill on
-   11.fence
-   12.fence off
-   13.fence on
-   14.fence home
-   15.fence hours
-   16.fence hours 23
-   17.fence hours 23 8
-   18.fence radius
-   19.fence radius 234
+    -garbage
+    -info
+    -loc
+    -owner
+    -owner set
+    -owner set 333 444-5555
+    -kill
+    -kill disable
+    -kill enable
+    -fence
+    -fence disable
+    -fence enable
+    -fence home
+    -fence hours
+    -fence hours 23
+    -fence hours 23 8
+    -fence hours 0 0
+    -fence radius
+    -fence radius 234
 */
 
 //TBD physical override switch (just an on/off switch for the whole unit.  kill switch relay must be Normally Closed)
@@ -32,17 +32,12 @@
 
 
 
+//#define INIT_MODULE  // initializes FONA and EEPROM
 //#define VAN_TEST
 #define VAN_PROD
 
 
-// Initialize the FONA module:
-// go to Serial Tube mode
-// AT+CNETLIGHT=0                 // stop "net" LED
-// AT+CMEE=2                      // Turn on verbose mode
-// AT+CLTS=1                      // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
-// AT&W                           // save writeable settings
-// restart modele
+
 
 #include "Adafruit_FONA.h"
 #include <SoftwareSerial.h>
@@ -68,18 +63,21 @@ Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adaf
 #define GEOFENCEHOMELAT_CHAR_12     1
 #define GEOFENCEHOMELON_CHAR_12     13
 #define GEOFENCERADIUS_CHAR_7       25
-#define GEOFENCETZ_CHAR_4           32
-#define GEOFENCESTART_CHAR_3        36
-#define GEOFENCEEND_CHAR_3          39
-#define GEOFENCEFOLLOW_BOOL_1       42
-#define KILLSWITCHSTATUS_BOOL_1     43
-#define OWNERPHONENUMBER_CHAR_15    44
+#define GEOFENCESTART_CHAR_3        32
+#define GEOFENCEEND_CHAR_3          35
+#define GEOFENCEFOLLOW_BOOL_1       38
+#define KILLSWITCHSTATUS_BOOL_1     39
+#define OWNERPHONENUMBER_CHAR_15    40
 
 uint8_t totalErrors = 0;
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
 void setup() {
+#ifdef INIT_MODULE
+  initEEPROM();
+  initFONA();
+#endif
   pinSetup();
   setupSerialAndFONA();
   waitUntilSMSReady();
@@ -338,7 +336,7 @@ void handleInfoReq(char* smsSender) {
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
 
-  sprintf(message, "Battery: %s\nRSSI: %u\nOnwer: %s\nCCID: %s\nIMEI: %s\nAPN: %s", battery, rssi, ownerPhoneNumber, ccid, imei, APN_ID);
+  sprintf(message, "Battery: %s\nRSSI: %u\nOwner: %s\nCCID: %s\nIMEI: %s\nAPN: %s", battery, rssi, ownerPhoneNumber, ccid, imei, APN_ID);
   sendSMS(smsSender, message);
 }
 
@@ -394,14 +392,12 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
   bool geofenceEnabled;
   char geofenceStart[3];
   char geofenceEnd[3];
-  char geofenceTZ[4];
   char geofenceRadius[7];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
   EEPROM.get(GEOFENCESTART_CHAR_3, geofenceStart);
   EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
-  EEPROM.get(GEOFENCETZ_CHAR_4, geofenceTZ);
   EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
@@ -485,7 +481,7 @@ void handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
 
     // if "set" was found but no number was found, use the number of the person who sent the text
     if (!ownerPhoneNumber[0]) {
-      strcpy(ownerPhoneNumber, smsSender);
+      getNumberFromString(smsSender, ownerPhoneNumber, 15);
     }
 
     sprintf(message, "Setting owner phone # to %s", ownerPhoneNumber);
@@ -966,6 +962,49 @@ void setAPN() {
   fona.setGPRSNetworkSettings(F(APN_ID));
 }
 
+void initEEPROM() {
+  // used on brand-new FONA module
+  EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
+  EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "0.0");
+  EEPROM.put(GEOFENCEHOMELON_CHAR_12, "0.0");
+  EEPROM.put(GEOFENCERADIUS_CHAR_7, 300);
+  EEPROM.put(GEOFENCESTART_CHAR_3, "12");
+  EEPROM.put(GEOFENCEEND_CHAR_3, "07");
+  EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
+  EEPROM.put(KILLSWITCHSTATUS_BOOL_1, false);
+  EEPROM.put(OWNERPHONENUMBER_CHAR_15, "5556667777");
+}
+
+void initFONA() {
+  // used on brand-new FONA module
+
+  sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
+  delay(2000);
+//  sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
+//  delay(3000);
+  sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
+  delay(5000);
+  sendRawCommand(F("AT&W"));                // save writeable settings
+  delay(5000);
+
+  resetFONA();
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TESTING
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void debugPrint(char* str) {
 #ifdef VAN_TEST
   Serial.print(str);
@@ -1017,18 +1056,11 @@ void debugPrintln(bool b) {
 #endif
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
 #ifdef VAN_TEST
 
 
@@ -1053,9 +1085,6 @@ void getEEPROM() {
   EEPROM.get(GEOFENCEENABLED_BOOL_1, tempb);
   Serial.write ("GEOFENCEENABLED_BOOL_1: ");
   debugPrintln(tempb);
-  EEPROM.get(GEOFENCETZ_CHAR_4, tempc);
-  Serial.write ("GEOFENCETZ_CHAR_4: ");
-  debugPrintln(tempc);
   EEPROM.get(GEOFENCESTART_CHAR_3, tempc);
   Serial.write ("GEOFENCESTART_CHAR_3: ");
   debugPrintln(tempc);
