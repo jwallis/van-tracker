@@ -32,7 +32,7 @@
 
 
 
-//#define INIT_MODULE  // initializes FONA and EEPROM
+//#define NEW_FONA_ONLY  // ONLY USE ON BRAND NEW FONA MODULES.  Initializes FONA and EEPROM
 //#define VAN_TEST
 #define VAN_PROD
 
@@ -74,7 +74,7 @@ short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
 void setup() {
-#ifdef INIT_MODULE
+#ifdef NEW_FONA_ONLY
   initEEPROM();
   initFONA();
 #endif
@@ -457,6 +457,9 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     strcat(message, geofenceStart);
     strcat(message, "-");
     strcat(message, geofenceEnd);
+    if (strcmp(geofenceStart, geofenceEnd) == 0) {  // if start time == end time  
+      strcat(message, " (Always on)");
+    }
     strcat(message, "\nRadius: ");
     strcat(message, geofenceRadius);
     strcat(message, " feet\nHome: google.com/search?q=");
@@ -962,17 +965,19 @@ void setAPN() {
   fona.setGPRSNetworkSettings(F(APN_ID));
 }
 
+
+#ifdef NEW_FONA_ONLY
 void initEEPROM() {
   // used on brand-new FONA module
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
-  EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "0.0");
-  EEPROM.put(GEOFENCEHOMELON_CHAR_12, "0.0");
-  EEPROM.put(GEOFENCERADIUS_CHAR_7, 300);
-  EEPROM.put(GEOFENCESTART_CHAR_3, "12");
-  EEPROM.put(GEOFENCEEND_CHAR_3, "07");
+  EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "52.4322115");
+  EEPROM.put(GEOFENCEHOMELON_CHAR_12, "10.7869289");
+  EEPROM.put(GEOFENCERADIUS_CHAR_7, "300");
+  EEPROM.put(GEOFENCESTART_CHAR_3, "00");
+  EEPROM.put(GEOFENCEEND_CHAR_3, "00");
   EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
   EEPROM.put(KILLSWITCHSTATUS_BOOL_1, false);
-  EEPROM.put(OWNERPHONENUMBER_CHAR_15, "5556667777");
+  EEPROM.put(OWNERPHONENUMBER_CHAR_15, "5551234567");
 }
 
 void initFONA() {
@@ -989,6 +994,7 @@ void initFONA() {
 
   resetFONA();
 }
+#endif
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
