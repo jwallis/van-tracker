@@ -158,6 +158,9 @@ void watchDogForGeofence() {
   }
 
   if (!isGeofenceEnabled()) {
+    if (lastGeofenceWarningMinute > -1) {
+      lastGeofenceWarningMinute = -1;
+    }
     return;
   }
 
@@ -220,6 +223,9 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   strcat(message, currentLon);
 
   sendSMS(ownerPhoneNumber, message);
+  if (lastGeofenceWarningMinute < 0) {
+    sendSMS(ownerPhoneNumber, F("Use 'follow' command to receive rapid location updates"));
+  }
   lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
 
