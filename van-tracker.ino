@@ -105,7 +105,7 @@ void watchDog() {
 void watchDogForErrors() {
   if (totalErrors > 3) {
     debugPrintln(F("_____________ TOTAL ERRORS > 10 _______________"));
-    fixErrors("watchDogForErrors()");
+    fixErrors(F("watchDogForErrors()"));
     totalErrors = 0;
   }
 }
@@ -241,7 +241,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
 
-void fixErrors(char* message) {
+void fixErrors(const __FlashStringHelper* message) {
 
   //TBD do something good here
   char ownerPhoneNumber[15];
@@ -370,38 +370,34 @@ void handleLocReq(char* smsSender) {
 }
 
 void handleKillSwitchReq(char* smsSender, char* smsValue) {
-  char message[40] = "";
-
   if (strstr(smsValue, "enable") ) {
     EEPROM.put(KILLSWITCHSTATUS_BOOL_1, true);
-    strcpy(message, "Kill Switch: ENABLED");
+    setKillSwitchPins();
+    sendSMS(smsSender, F("Kill Switch: ENABLED"));
+    return;
   }
   if (strstr(smsValue, "disable") ) {
     EEPROM.put(KILLSWITCHSTATUS_BOOL_1, false);
-    strcpy(message, "Kill Switch: DISABLED");
-  }
-  if (!message[0]) {
-    strcpy(message, "Try \"kill\" plus:\nenable/disable");
+    setKillSwitchPins();
+    sendSMS(smsSender, F("Kill Switch: DISABLED"));
+    return;
   }
   setKillSwitchPins();
-  sendSMS(smsSender, message);
+  sendSMS(smsSender, F("Try \"kill\" plus:\nenable/disable"));
 }
 
 void handleFollowReq(char* smsSender, char* smsValue) {
-  char message[40] = "";
-
   if (strstr(smsValue, "enable") ) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
-    strcpy(message, "Follow: ENABLED");
+    sendSMS(smsSender, F("Follow: ENABLED"));
+    return;
   }
   if (strstr(smsValue, "disable") ) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
-    strcpy(message, "Follow: DISABLED");
+    sendSMS(smsSender, F("Follow: DISABLED"));
+    return;
   }
-  if (!message[0]) {
-    strcpy(message, "Try \"follow\" plus:\nenable/disable");
-  }
-  sendSMS(smsSender, message);
+  sendSMS(smsSender, F("Try \"follow\" plus:\nenable/disable"));  
 }
 
 void handleGeofenceReq(char* smsSender, char* smsValue) {
@@ -488,7 +484,7 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     sendSMS(smsSender, message);
   }
   else {
-    sendSMS(smsSender, "Try \"fence\" plus:\nenable/disable\ninfo\nhome (uses current loc)\nhours 0 21 (12am-9pm)\nradius 100 (100 feet)");
+    sendSMS(smsSender, F("Try \"fence\" plus:\nenable/disable\ninfo\nhome (uses current loc)\nhours 0 21 (12am-9pm)\nradius 100 (100 feet)"));
   }
 }
 
@@ -519,7 +515,7 @@ void handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
 }
 
 void handleUnknownReq(char* smsSender) {
-  sendSMS(smsSender, "Commands:\ninfo\nloc\nowner\nkill\nfence\nfollow");
+  sendSMS(smsSender, F("Commands:\ninfo\nloc\nowner\nkill\nfence\nfollow"));
 }
 
 bool isSMSSlotFilled(int8_t smsSlotNumber) {
@@ -763,6 +759,17 @@ void sendSMS(char* send_to, char* message) {
 #endif
 }
 
+void sendSMS(char* send_to, const __FlashStringHelper* message) {
+  debugPrintln(F("  Attempting to send SMS:"));
+  debugPrintln(message);
+#ifdef VAN_PROD
+  if (!fona.sendSMS(send_to, message)) {
+    debugPrintln(F("  Failed to send SMS"));
+  } else {
+    debugPrintln(F("  Success sending SMS"));
+  }
+#endif
+}
 
 
 
@@ -964,7 +971,7 @@ void waitUntilSMSReady() {
     }
     delay(1000);
   }
-  fixErrors("waitUntilSMSReady()");
+  fixErrors(F("waitUntilSMSReady()"));
 }
 
 void moreSetup() {
