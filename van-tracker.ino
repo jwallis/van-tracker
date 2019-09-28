@@ -111,10 +111,9 @@ void watchDog() {
 }
 
 void watchDogForErrors() {
-  if (totalErrors > 3) {
+  if (totalErrors > 10) {
     debugPrintln(F("_____________ TOTAL ERRORS > 10 _______________"));
     fixErrors(F("watchDogForErrors()"));
-    totalErrors = 0;
   }
 }
 
@@ -263,19 +262,19 @@ void fixErrors(const __FlashStringHelper* message) {
 void checkSMSInput() {
   int8_t numberOfSMSs;
 
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 10; i++) {
     numberOfSMSs = fona.getNumSMS();
-    debugPrint(F("number of SMSs")); debugPrintln(numberOfSMSs);
 
     if (numberOfSMSs >= 0) {
       handleSMSInput();
       debugPrint(F("."));
       return;
     }
-    debugPrintln(F("error in checkSMSInput()"));
-    totalErrors++;
+    debugPrint(F("error in checkSMSInput(). Number of SMSs: ")); debugPrintln(numberOfSMSs);
     delay(1000 * (i+1));
   }
+  debugPrintln(F("failure in checkSMSInput()"));
+  totalErrors++;
 }
 
 void handleSMSInput() {
@@ -613,10 +612,10 @@ void setFONAGPS(bool tf) {
   int8_t status;
 
   // error, keep trying status.  maybe we should turn off/on?
-  for (int i = 1; i < 4; i++) {
+  for (int i = 1; i < 7; i++) {
     if (fona.GPSstatus() >= 0)
       break;
-    delay(i * 1000);
+    delay(i * 2000);
   }
 
   // error, give up
@@ -636,7 +635,7 @@ void setFONAGPS(bool tf) {
   for (int j = 1; j < 9; j++) {
     if (fona.GPSstatus() >= 2)
       return;
-    delay(j * 2 * 1000);
+    delay(j * 2000);
   }
 
   // no fix, give up
@@ -970,12 +969,12 @@ void setupSerialAndFONA() {
 }
 
 void waitUntilSMSReady() {
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 15; i++) {
     if (fona.getNumSMS() >= 0) {
       debugPrintln(F("SMS is ready"));
       return;
     }
-    delay(1000);
+    delay(1000 * (i+1));
   }
   fixErrors(F("waitUntilSMSReady()"));
 }
