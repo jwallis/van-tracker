@@ -42,6 +42,7 @@
 #include "Adafruit_FONA.h"
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
+#include <avr/wdt.h>
 
 #define FONA_RX_PIN 2
 #define FONA_TX_PIN 3
@@ -115,12 +116,12 @@ void watchDogForTurnOffGPS() {
   if (lastGPSQueryMinute == -1)
     return;
 
-  short currentMinuteInt = getCurrentMinuteShort;
+  short currentMinuteInt = getCurrentMinuteShort();
 
   // if it's been > 20 minutes, take action (turn off gps to save power)
 
   // lastQuery = 10, current = 20
-  if (lastGPSQueryMinute < currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 20) {
+  if (lastGPSQueryMinute <= currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 20) {
       setFONAGPS(false);
       lastGPSQueryMinute = -1;
   }
@@ -139,7 +140,7 @@ int getCurrentMinuteShort() {
   
   getTime(currentTimeStr);
 
-  // "19/09/19,17:03:01-20"
+  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
   currentMinuteStr[0] = currentTimeStr[13];
   currentMinuteStr[1] = currentTimeStr[14];
   currentMinuteStr[2] = '\0';
@@ -166,7 +167,7 @@ void watchDogForGeofence() {
 
     // if it's been < 5 minutes, do NOT take action
     // lastQuery = 10, current = 20
-    if (lastGeofenceWarningMinute < currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
+    if (lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
       return;
     }
   
@@ -191,8 +192,6 @@ void sendGeofenceWarning(bool follow) {
   char currentLon[12];
 
   getGPSLatLon(currentLat, currentLon);
-
-  lastGeofenceWarningMinute = getCurrentMinuteShort();
   sendGeofenceWarning(follow, currentLat, currentLon);
 }
 
@@ -221,6 +220,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
     strcat(message, currentLon);
 
     sendSMS(ownerPhoneNumber, message);
+  lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
 
 void fixErrors(char* message) {
@@ -762,9 +762,12 @@ void sendSMS(char* send_to, char* message) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void resetFONA() {
-  digitalWrite(RESET_PIN, LOW);
-  delay(5000);
-  digitalWrite(RESET_PIN, HIGH);
+//  digitalWrite(RESET_PIN, LOW);
+//  delay(5000);
+//  digitalWrite(RESET_PIN, HIGH);
+  wdt_disable();
+  wdt_enable(WDTO_15MS);
+  while (1) {}
 }
 
 void insertZero(char *in) {
