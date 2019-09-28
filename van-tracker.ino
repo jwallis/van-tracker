@@ -196,30 +196,30 @@ void sendGeofenceWarning(bool follow) {
 }
 
 void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
-    char geofenceHomeLat[12];
-    char geofenceHomeLon[12];
-    char ownerPhoneNumber[15];
-    EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
-    EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+  char geofenceHomeLat[12];
+  char geofenceHomeLon[12];
+  char ownerPhoneNumber[15];
+  EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+  EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-    char message[139];      // SMS max len = 140
+  char message[139];      // SMS max len = 140
 
-    if (follow)
-      strcat(message, "FOLLOW MODE");
-    else
-      strcat(message, "GEOFENCE WARNING");
+  if (follow)
+    strcat(message, "FOLLOW MODE");
+  else
+    strcat(message, "GEOFENCE WARNING");
 
-    strcat(message, ":\nHome:\ngoogle.com/search?q=");
-    strcat(message, geofenceHomeLat);
-    strcat(message, ",");
-    strcat(message, geofenceHomeLon);
-    strcat(message, "\nCurrent:\ngoogle.com/search?q=");
-    strcat(message, currentLat);
-    strcat(message, ",");
-    strcat(message, currentLon);
+  strcat(message, ":\nHome:\ngoogle.com/search?q=");
+  strcat(message, geofenceHomeLat);
+  strcat(message, ",");
+  strcat(message, geofenceHomeLon);
+  strcat(message, "\nCurrent:\ngoogle.com/search?q=");
+  strcat(message, currentLat);
+  strcat(message, ",");
+  strcat(message, currentLon);
 
-    sendSMS(ownerPhoneNumber, message);
+  sendSMS(ownerPhoneNumber, message);
   lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
 
@@ -932,9 +932,8 @@ void setupSerialAndFONA() {
 #ifdef VAN_TEST
   while (!Serial);
   Serial.begin(115200);
-#endif
-
   debugPrintln(F("Initializing....(May take 3 seconds)"));
+#endif
 
   fonaSerial->begin(4800);
   if (! fona.begin(*fonaSerial)) {
@@ -1344,10 +1343,6 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
 void printFONAType() {
   switch (fona.type()) {
-    case FONA800L:
-      debugPrintln(F("FONA 800L")); break;
-    case FONA800H:
-      debugPrintln(F("FONA 800H")); break;
     case FONA808_V1:
       debugPrintln(F("FONA 808 (v1)")); break;
     case FONA808_V2:
