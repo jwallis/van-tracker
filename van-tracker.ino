@@ -36,6 +36,8 @@
 //#define VAN_TEST
 #define VAN_PROD
 
+#define BOARD_MEGA
+//#define BOARD_UNO_NANO
 
 
 
@@ -45,8 +47,13 @@
 #include <avr/wdt.h>
 
 #define FONA_RX_PIN 2
-#define FONA_TX_PIN 3
 #define RESET_PIN 4
+#ifdef BOARD_MEGA
+#define FONA_TX_PIN 11
+#endif
+#ifdef BOARD_UNO_NANO
+#define FONA_TX_PIN 3
+#endif
 
 #define KILL_SWITCH_PIN_A 5
 #define KILL_SWITCH_PIN_B 6
@@ -79,6 +86,7 @@ void setup() {
   initEEPROM();
   initFONA();
 #endif
+
   pinSetup();
   setupSerialAndFONA();
   waitUntilSMSReady();
@@ -235,7 +243,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   strcat(message, currentLon);
 
   sendSMS(ownerPhoneNumber, message);
-  if (lastGeofenceWarningMinute < 0) {
+  if (lastGeofenceWarningMinute < 0 && !follow) {
     sendSMS(ownerPhoneNumber, F("Use 'follow' command to receive rapid location updates"));
   }
   lastGeofenceWarningMinute = getCurrentMinuteShort();
@@ -462,6 +470,7 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     //    else
     //      sprintf(message, "DISABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
 
+    strcpy(message, "Fence: ");
     if (geofenceEnabled)
       strcpy(message, "EN");
     else
@@ -520,9 +529,6 @@ void handleUnknownReq(char* smsSender) {
 
 bool isSMSSlotFilled(int8_t smsSlotNumber) {
   char smsSender[15];
-
-  // TBD would be nice to check for errors here, totalErrors++
-  // but I'm not sure what the response is when in error state
 
   if (fona.getSMSSender(smsSlotNumber, smsSender, 15)) {
     return true;
