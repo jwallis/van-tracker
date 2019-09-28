@@ -243,7 +243,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 
   sendSMS(ownerPhoneNumber, message);
   if (lastGeofenceWarningMinute < 0 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use 'follow' command to receive rapid location updates"));
+    sendSMS(ownerPhoneNumber, F("Use 'follow enable' to receive rapid location updates"));
   }
   lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
@@ -471,9 +471,9 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
 
     strcpy(message, "Fence: ");
     if (geofenceEnabled)
-      strcpy(message, "EN");
+      strcat(message, "EN");
     else
-      strcpy(message, "DIS");
+      strcat(message, "DIS");
 
     strcat(message, "ABLED\nHours: ");
     strcat(message, geofenceStart);
