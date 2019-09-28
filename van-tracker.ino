@@ -145,7 +145,19 @@ int getCurrentMinuteShort() {
   currentMinuteStr[1] = currentTimeStr[14];
   currentMinuteStr[2] = '\0';
   return atoi(currentMinuteStr);
+}
 
+int getCurrentHourShort() {
+  char currentTimeStr[23];
+  char currentHourStr[3];
+  
+  getTime(currentTimeStr);
+
+  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
+  currentHourStr[0] = currentTimeStr[10];
+  currentHourStr[1] = currentTimeStr[11];
+  currentHourStr[2] = '\0';
+  return atoi(currentHourStr);
 }
 
 void watchDogForGeofence() {
@@ -686,22 +698,16 @@ bool isGeofenceEnabled() {
   if (strcmp(geofenceStart, geofenceEnd) == 0)
     return true;
 
-  char currentTimeStr[23];
-  
-  getTime(currentTimeStr);
-  getOccurrenceInDelimitedString(currentTimeStr, currentTimeStr, 2, ',');   // turn "19/09/19,17:03:55-20" into 17:03:55-20"
-  getOccurrenceInDelimitedString(currentTimeStr, currentTimeStr, 1, ':');   // turn 17:03:55-20" into 17
+  short currentHour = getCurrentHourShort();
 
   // simple case, current time is between start/end.  Start time is inclusive
-  if (strcmp(currentTimeStr, geofenceStart) >= 0 && strcmp(currentTimeStr, geofenceEnd) < 0)
+  if (currentHour >= atoi(geofenceStart) && currentHour < atoi(geofenceEnd))
     return true;
 
   // if start time is after end time (23-7 i.e. 11pm-7am), it only has to satisfy one of the conditions.  HOW INTERESTING
-  if (strcmp(geofenceStart, geofenceEnd) > 0) {
-    if (strcmp(currentTimeStr, geofenceStart) >= 0 || strcmp(currentTimeStr, geofenceEnd) < 0) {
+  if (strcmp(geofenceStart, geofenceEnd) > 0)
+    if (currentHour >= atoi(geofenceStart) || currentHour < atoi(geofenceEnd))
       return true;
-    }
-  }
 
   return false;
 }
