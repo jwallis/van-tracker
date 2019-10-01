@@ -177,15 +177,13 @@ void watchDogForGeofence() {
   }
 
   if (!isGeofenceEnabled()) {
-    if (lastGeofenceWarningMinute > -1) {
-      lastGeofenceWarningMinute = -1;
-    }
+    lastGeofenceWarningMinute = -1;
     return;
   }
 
   short currentMinuteInt = getCurrentMinuteShort();
 
-  if (lastGeofenceWarningMinute > -1) {
+  if (lastGeofenceWarningMinute != -1) {
 
     // if it's been < 5 minutes, do NOT take action
     // lastQuery = 10, current = 20
@@ -242,7 +240,8 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   strcat(message, currentLon);
 
   sendSMS(ownerPhoneNumber, message);
-  if (lastGeofenceWarningMinute < 0 && !follow) {
+  // we only want to send this message the first time the geofence is broken
+  if (lastGeofenceWarningMinute == -1 && !follow) {
     sendSMS(ownerPhoneNumber, F("Use 'follow enable' to receive rapid location updates"));
   }
   lastGeofenceWarningMinute = getCurrentMinuteShort();
@@ -461,6 +460,9 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
       message[0] = '1';
     }
   }
+
+  // reset this so the "follow" message will be sent when the fence is broken
+  lastGeofenceWarningMinute = -1;
 
   if (message[0] || strstr(smsValue, "info")) {
     //    Yay only 2k of RAM, this saves 54 bytes!!!!!!!
