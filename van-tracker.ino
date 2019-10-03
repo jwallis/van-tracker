@@ -415,7 +415,6 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
   char geofenceRadius[7];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
-  EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
   EEPROM.get(GEOFENCESTART_CHAR_3, geofenceStart);
   EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
   EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
@@ -425,16 +424,15 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
 
   if (strstr(smsValue, "enable") ) {
     EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
-    geofenceEnabled = true;
     message[0] = '1';
   }
   if (strstr(smsValue, "disable") ) {
     EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
-    geofenceEnabled = false;
     message[0] = '1';
   }
   
   setGeofencePins();
+  EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
   
   if (strstr(smsValue, "radius")) {
     geofenceRadius[0] = '\0';
@@ -450,7 +448,7 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     message[0] = '1';
   }
   if (strstr(smsValue, "hours")) {
-    if (setGeofenceHours(smsValue, geofenceStart, geofenceEnd)) {
+    if (setHoursFromSMS(smsValue, geofenceStart, geofenceEnd)) {
       // make 4 => 04
       insertZero(geofenceStart);
       insertZero(geofenceEnd);
@@ -473,16 +471,16 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
 
     strcpy(message, "Fence: ");
     if (geofenceEnabled)
-      strcat(message, "EN");
+      strcat(message, "En");
     else
-      strcat(message, "DIS");
+      strcat(message, "Dis");
 
-    strcat(message, "ABLED\nHours: ");
+    strcat(message, "abled\nHours: ");
     strcat(message, geofenceStart);
     strcat(message, "-");
     strcat(message, geofenceEnd);
     if (strcmp(geofenceStart, geofenceEnd) == 0) {  // if start time == end time  
-      strcat(message, " (Always on)");
+      strcat(message, " (always on)");
     }
     strcat(message, "\nRadius: ");
     strcat(message, geofenceRadius);
@@ -494,7 +492,7 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     sendSMS(smsSender, message);
   }
   else {
-    sendSMS(smsSender, F("Try \"fence\" plus:\nenable/disable\ninfo\nhome (uses current loc)\nhours 0 21 (12am-9pm)\nradius 100 (100 feet)"));
+    sendSMS(smsSender, F("Try \"fence\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)\nhome (uses current loc)\nradius 100 (100 feet)"));
   }
 }
 
@@ -671,17 +669,6 @@ void getTime(char* currentTime) {
 }
 
 ////////////////////////////////
-//GEOFENCE
-
-bool setGeofenceHours(char* smsValue, char* geofenceStart, char* geofenceEnd) {
-  // smsValue:
-  // fence hours 0 21
-  // 0 21 means 12am - 9pm
-  getOccurrenceInDelimitedString(smsValue, geofenceStart, 3, ' ');
-  getOccurrenceInDelimitedString(smsValue, geofenceEnd, 4, ' ');
-
-  return (geofenceStart[0] && geofenceEnd[0]);
-}
 
 bool isGeofenceEnabled() {
   // takes into account both "geofenceEnabled" option
@@ -786,6 +773,15 @@ void sendSMS(char* send_to, const __FlashStringHelper* message) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 //HELPERS
 ///////////////////////////////////////////////////////////////////////////////////////////
+bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
+  // smsValue:
+  // fence hours 0 21
+  // 0 21 means 12am - 9pm
+  getOccurrenceInDelimitedString(smsValue, hoursStart, 3, ' ');
+  getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ');
+
+  return (hoursStart[0] && hoursEnd[0]);
+}
 
 void resetFONA() {
 //  digitalWrite(RESET_PIN, LOW);
