@@ -74,8 +74,10 @@ Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adaf
 #define GEOFENCESTART_CHAR_3        32
 #define GEOFENCEEND_CHAR_3          35
 #define GEOFENCEFOLLOW_BOOL_1       38
-#define KILLSWITCHSTATUS_BOOL_1     39
-#define OWNERPHONENUMBER_CHAR_15    40
+#define KILLSWITCHENABLED_BOOL_1    39
+#define KILLSWITCHSTART_CHAR_3      40
+#define KILLSWITCHEND_CHAR_3        43
+#define OWNERPHONENUMBER_CHAR_15    46
 
 uint8_t totalErrors = 0;
 short lastGPSQueryMinute = -1;
@@ -107,6 +109,7 @@ void loop() {
 void watchDog() {
   watchDogForErrors();
   watchDogForTurnOffGPS();
+  watchDogForKillSwitch();
   watchDogForGeofence();
 }
 
@@ -167,6 +170,10 @@ int getCurrentHourShort() {
   return atoi(currentHourStr);
 }
 
+void watchDogForKillSwitch() {
+  setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+}
+
 void watchDogForGeofence() {
   bool follow;
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
@@ -176,7 +183,10 @@ void watchDogForGeofence() {
     return;
   }
 
-  if (!isGeofenceEnabled()) {
+  bool geofenceActive = isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3);
+  setGeofencePins(geofenceActive);
+
+  if (!geofenceActive) {
     lastGeofenceWarningMinute = -1;
     return;
   }
@@ -375,23 +385,6 @@ void handleLocReq(char* smsSender) {
   sendSMS(smsSender, message);
 }
 
-void handleKillSwitchReq(char* smsSender, char* smsValue) {
-  if (strstr(smsValue, "enable") ) {
-    EEPROM.put(KILLSWITCHSTATUS_BOOL_1, true);
-    setKillSwitchPins();
-    sendSMS(smsSender, F("Kill Switch: ENABLED"));
-    return;
-  }
-  if (strstr(smsValue, "disable") ) {
-    EEPROM.put(KILLSWITCHSTATUS_BOOL_1, false);
-    setKillSwitchPins();
-    sendSMS(smsSender, F("Kill Switch: DISABLED"));
-    return;
-  }
-  setKillSwitchPins();
-  sendSMS(smsSender, F("Try \"kill\" plus:\nenable/disable"));
-}
-
 void handleFollowReq(char* smsSender, char* smsValue) {
   if (strstr(smsValue, "enable") ) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
@@ -404,6 +397,61 @@ void handleFollowReq(char* smsSender, char* smsValue) {
     return;
   }
   sendSMS(smsSender, F("Try \"follow\" plus:\nenable/disable"));  
+}
+
+void handleKillSwitchReq(char* smsSender, char* smsValue) {
+  char message[64] = "";
+
+  bool killSwitchEnabled;
+  char killSwitchStart[3];
+  char killSwitchEnd[3];
+  EEPROM.get(KILLSWITCHSTART_CHAR_3, killSwitchStart);
+  EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
+
+  if (strstr(smsValue, "enable") ) {
+    EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
+    message[0] = '1';
+  }
+  if (strstr(smsValue, "disable") ) {
+    EEPROM.put(KILLSWITCHENABLED_BOOL_1, false);
+    message[0] = '1';
+  }
+
+  EEPROM.get(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
+
+  if (strstr(smsValue, "hours")) {
+    if (setHoursFromSMS(smsValue, killSwitchStart, killSwitchEnd)) {
+      // make 4 => 04
+      insertZero(killSwitchStart);
+      insertZero(killSwitchEnd);
+      
+      EEPROM.put(KILLSWITCHSTART_CHAR_3, killSwitchStart);
+      EEPROM.put(KILLSWITCHEND_CHAR_3, killSwitchEnd);
+      message[0] = '1';
+    }
+  }
+
+  if (message[0] || strstr(smsValue, "info")) {
+    //  Yay only 2k of RAM
+    strcpy(message, "Kill: ");
+    if (killSwitchEnabled)
+      strcat(message, "En");
+    else
+      strcat(message, "Dis");
+
+    strcat(message, "abled\nHours: ");
+    strcat(message, killSwitchStart);
+    strcat(message, "-");
+    strcat(message, killSwitchEnd);
+    if (strcmp(killSwitchStart, killSwitchEnd) == 0) {  // if start time == end time  
+      strcat(message, " (always on)");
+    }
+
+    sendSMS(smsSender, message);
+  }
+  else {
+    sendSMS(smsSender, F("Try \"kill\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)"));
+  }
 }
 
 void handleGeofenceReq(char* smsSender, char* smsValue) {
@@ -669,40 +717,6 @@ void getTime(char* currentTime) {
 }
 
 ////////////////////////////////
-
-bool isGeofenceEnabled() {
-  // takes into account both "geofenceEnabled" option
-  // as well as the hours 1am-8am option
-
-  bool geofenceEnabled;
-  EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
-  if (!geofenceEnabled)
-    return false;
-
-  char geofenceStart[3];
-  char geofenceEnd[3];
-  EEPROM.get(GEOFENCESTART_CHAR_3, geofenceStart);
-  EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
-
-  // if start and end are the same, the fence is ALWAYS on
-  if (strcmp(geofenceStart, geofenceEnd) == 0)
-    return true;
-
-  short currentHour = getCurrentHourShort();
-
-  // simple case, current time is between start/end.  Start time is inclusive
-  if (currentHour >= atoi(geofenceStart) && currentHour < atoi(geofenceEnd))
-    return true;
-
-  // if start time is after end time (23-7 i.e. 11pm-7am), it only has to satisfy one of the conditions.  HOW INTERESTING
-  if (strcmp(geofenceStart, geofenceEnd) > 0)
-    if (currentHour >= atoi(geofenceStart) || currentHour < atoi(geofenceEnd))
-      return true;
-
-  return false;
-}
-
-////////////////////////////////
 //GPRS
 
 //TBD
@@ -781,6 +795,38 @@ bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ');
 
   return (hoursStart[0] && hoursEnd[0]);
+}
+
+bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
+  // takes into account both "enabled" option
+  // as well as the "hours" 1am-8am option
+
+  bool enabled;
+  EEPROM.get(eepromEnabled, enabled);
+  if (!enabled)
+    return false;
+
+  char startHour[3];
+  char endHour[3];
+  EEPROM.get(eepromStart, startHour);
+  EEPROM.get(eepromEnd, endHour);
+
+  // if start and end are the same, the fence is ALWAYS on
+  if (strcmp(startHour, endHour) == 0)
+    return true;
+
+  short currentHour = getCurrentHourShort();
+
+  // simple case, current time is between start/end.  Start time is inclusive
+  if (currentHour >= atoi(startHour) && currentHour < atoi(endHour))
+    return true;
+
+  // if start time is after end time (23-7 i.e. 11pm-7am), it only has to satisfy one of the conditions.  HOW INTERESTING
+  if (strcmp(startHour, endHour) > 0)
+    if (currentHour >= atoi(startHour) || currentHour < atoi(endHour))
+      return true;
+
+  return false;
 }
 
 void resetFONA() {
@@ -1124,9 +1170,15 @@ void getEEPROM() {
   EEPROM.get(GEOFENCERADIUS_CHAR_7, tempc);
   Serial.write ("GEOFENCERADIUS_CHAR_7: ");
   debugPrintln(tempc);
-  EEPROM.get(KILLSWITCHSTATUS_BOOL_1, tempb);
-  Serial.write ("KILLSWITCHSTATUS_BOOL_1: ");
+  EEPROM.get(KILLSWITCHENABLED_BOOL_1, tempb);
+  Serial.write ("KILLSWITCHENABLED_BOOL_1: ");
   debugPrintln(tempb);
+  EEPROM.get(KILLSWITCHSTART_CHAR_3, tempc);
+  Serial.write ("KILLSWITCHSTART_CHAR_3: ");
+  debugPrintln(tempc);
+  EEPROM.get(KILLSWITCHEND_CHAR_3, tempc);
+  Serial.write ("KILLSWITCHEND_CHAR_3: ");
+  debugPrintln(tempc);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, tempc);
   Serial.write ("OWNERPHONENUMBER_CHAR_15: ");
   debugPrintln(tempc);
