@@ -32,12 +32,12 @@
 
 
 
-//#define NEW_FONA_ONLY  // ONLY USE ON BRAND NEW FONA MODULES.  Initializes FONA and EEPROM
+//#define NEW_HARDWARE_ONLY  // Initializes brand new FONA and arduino's EEPROM
 //#define VAN_TEST
 #define VAN_PROD
 
-#define BOARD_MEGA
-//#define BOARD_UNO_NANO
+//#define BOARD_MEGA
+#define BOARD_UNO_NANO
 
 
 
@@ -48,11 +48,11 @@
 
 #define FONA_RX_PIN 2
 #define RESET_PIN 4
-#ifdef BOARD_MEGA
-#define FONA_TX_PIN 11
-#endif
 #ifdef BOARD_UNO_NANO
 #define FONA_TX_PIN 3
+#endif
+#ifdef BOARD_MEGA
+#define FONA_TX_PIN 11
 #endif
 
 #define KILL_SWITCH_PIN_A 5
@@ -84,15 +84,31 @@ short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
 void setup() {
-#ifdef NEW_FONA_ONLY
+#ifdef VAN_PROD
+  setupFONA();
+  pinSetup();
+  waitUntilSMSReady();
+  moreSetup();
+  //TBD - first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
+#endif
+  
+#ifdef NEW_HARDWARE_ONLY
+  setupSerial();
+  setupFONA();
+  pinSetup();
+  waitUntilSMSReady();
+  moreSetup();
   initEEPROM();
   initFONA();
 #endif
 
+#ifdef VAN_TEST
+  setupSerial();
+  setupFONA();
   pinSetup();
-  setupSerialAndFONA();
   waitUntilSMSReady();
   moreSetup();
+#endif
 }
 
 void loop() {
@@ -236,9 +252,9 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   char message[139];      // SMS max len = 140
 
   if (follow)
-    strcat(message, "FOLLOW MODE");
+    strcpy(message, "FOLLOW MODE");
   else
-    strcat(message, "GEOFENCE WARNING");
+    strcpy(message, "GEOFENCE WARNING");
 
   strcat(message, ":\nHome:\ngoogle.com/search?q=");
   strcat(message, geofenceHomeLat);
@@ -479,7 +495,6 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     message[0] = '1';
   }
   
-  setGeofencePins();
   EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
   
   if (strstr(smsValue, "radius")) {
@@ -980,29 +995,26 @@ void pinSetup() {
   pinMode(GEOFENCE_PIN, OUTPUT);
   pinMode(KILL_SWITCH_PIN_A, OUTPUT);
   pinMode(KILL_SWITCH_PIN_B, OUTPUT);
-  setKillSwitchPins();
-  setGeofencePins();
 }
 
-void setKillSwitchPins() {
-  bool tf = EEPROM.get(KILLSWITCHSTATUS_BOOL_1, tf);
+void setKillSwitchPins(bool tf) {
   digitalWrite(KILL_SWITCH_PIN_A, tf);
   digitalWrite(KILL_SWITCH_PIN_B, tf);
 }
 
-void setGeofencePins() {
-  bool tf = EEPROM.get(GEOFENCEENABLED_BOOL_1, tf);
+void setGeofencePins(bool tf) {
   digitalWrite(GEOFENCE_PIN, tf);
 }
 
-
-void setupSerialAndFONA() {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+void setupSerial() {
   while (!Serial);
   Serial.begin(115200);
-  debugPrintln(F("Initializing....(May take 3 seconds)"));
+  Serial.println(F("Initializing....(May take 3 seconds)"));
+}
 #endif
 
+void setupFONA() {
   fonaSerial->begin(4800);
   if (! fona.begin(*fonaSerial)) {
     debugPrintln(F("Couldn't find FONA"));
@@ -1036,9 +1048,10 @@ void setAPN() {
 }
 
 
-#ifdef NEW_FONA_ONLY
+#ifdef NEW_HARDWARE_ONLY
 void initEEPROM() {
   // used on brand-new FONA module
+  debugPrintln(F("Begin initEEPROM()"));
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "10.7869289");
@@ -1046,23 +1059,28 @@ void initEEPROM() {
   EEPROM.put(GEOFENCESTART_CHAR_3, "00");
   EEPROM.put(GEOFENCEEND_CHAR_3, "00");
   EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
-  EEPROM.put(KILLSWITCHSTATUS_BOOL_1, false);
+  EEPROM.put(KILLSWITCHENABLED_BOOL_1, false);
+  EEPROM.put(KILLSWITCHSTART_CHAR_3, "00");
+  EEPROM.put(KILLSWITCHEND_CHAR_3, "00");
   EEPROM.put(OWNERPHONENUMBER_CHAR_15, "5551234567");
+  debugPrintln(F("End initEEPROM()"));
 }
 
 void initFONA() {
   // used on brand-new FONA module
-
+  debugPrintln(F("Begin initFONA()"));
+  sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
+  delay(3000);
   sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
   delay(2000);
-//  sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
-//  delay(3000);
   sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
   delay(5000);
+  sendRawCommand(F("AT+CMEE=0"));           // Turn on verbose mode
+  delay(3000);
   sendRawCommand(F("AT&W"));                // save writeable settings
   delay(5000);
-
-  resetFONA();
+  debugPrintln(F("End initFONA().\n\nPlease update #ifdefs and restart."));
+  while (1) {}
 }
 #endif
 
@@ -1082,52 +1100,52 @@ void initFONA() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void debugPrint(char* str) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.print(str);
 #endif
 }
 void debugPrint(const __FlashStringHelper* str) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.print(str);
 #endif
 }
 void debugPrintln(char* str) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(str);
 #endif
 }
 void debugPrintln(const __FlashStringHelper* str) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(str);
 #endif
 }
 void debugPrintln(float f, int i) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(f, i);
 #endif
 }
 void debugPrintln(String s) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
 void debugPrintln(uint16_t s) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
 void debugPrintln(int8_t i) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(i);
 #endif
 }
 void debugPrintln(short s) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
 void debugPrintln(bool b) {
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(b);
 #endif
 }
