@@ -27,7 +27,6 @@
     -fence radius 234
 */
 
-//TBD physical override switch (just an on/off switch for the whole unit.  kill switch relay must be Normally Closed)
 //TBD change enable/disable to on/off ? 
 
 
@@ -48,6 +47,7 @@
 
 #define FONA_RX_PIN 2
 #define RESET_PIN 4
+
 #ifdef BOARD_UNO_NANO
 #define FONA_TX_PIN 3
 #endif
@@ -376,7 +376,7 @@ void handleInfoReq(char* smsSender) {
   uint8_t rssi;
   char ccid[22];
   char imei[16];
-  char message[50];
+  char message[141];
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -720,10 +720,6 @@ void getGPSLatLon(char* latitude, char* longitude) {
   // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
   getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
   getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
-
-  debugPrint(latitude);
-  debugPrint(F(","));
-  debugPrintln(longitude);
 }
 
 void getTime(char* currentTime) {
@@ -757,7 +753,6 @@ void turnGPRSOn() {
 //SMS
 
 void deleteSMS(uint8_t msg_number) {
-#ifdef VAN_PROD
   for (int i = 2; i < 10; i++) {
     debugPrintln(F("  Attempting to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
@@ -767,31 +762,27 @@ void deleteSMS(uint8_t msg_number) {
     delay(i * 1000);
   }
   debugPrintln(F("  Failed to delete SMS"));
-#endif
+  totalErrors++;
 }
 
 void sendSMS(char* send_to, char* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
-#ifdef VAN_PROD
   if (!fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Failed to send SMS"));
   } else {
     debugPrintln(F("  Success sending SMS"));
   }
-#endif
 }
 
 void sendSMS(char* send_to, const __FlashStringHelper* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
-#ifdef VAN_PROD
   if (!fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Failed to send SMS"));
   } else {
     debugPrintln(F("  Success sending SMS"));
   }
-#endif
 }
 
 
