@@ -27,16 +27,28 @@
     -fence radius 234
 */
 
-//TBD change enable/disable to on/off ? 
 
 
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//    SET HARDWARE OPTIONS
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-//#define NEW_HARDWARE_ONLY  // Initializes brand new FONA and arduino's EEPROM
 //#define VAN_TEST
 #define VAN_PROD
+//#define NEW_HARDWARE_ONLY  // Initializes new FONA/SIM808 module as well as new arduino's EEPROM
 
 //#define BOARD_MEGA
 #define BOARD_UNO_NANO
+
+//#define ADAFRUIT_FONA_SHIELD
+#define AND_TECH_SIM808_BREAKOUT
+
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 
 
@@ -270,6 +282,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   if (lastGeofenceWarningMinute == -1 && !follow) {
     sendSMS(ownerPhoneNumber, F("Use 'follow enable' to receive rapid location updates"));
   }
+
   lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
 
@@ -289,13 +302,14 @@ void checkSMSInput() {
 
   for (int i = 0; i < 10; i++) {
     numberOfSMSs = fona.getNumSMS();
+    if (numberOfSMSs == 0)
+      return;
 
-    if (numberOfSMSs >= 0) {
+    if (numberOfSMSs > 0) {
       handleSMSInput();
-      debugPrint(F("."));
       return;
     }
-    debugPrint(F("error in checkSMSInput(). Number of SMSs: ")); debugPrintln(numberOfSMSs);
+    debugPrintln(F("error in checkSMSInput()"));
     delay(1000 * (i+1));
   }
   debugPrintln(F("failure in checkSMSInput()"));
@@ -305,9 +319,6 @@ void checkSMSInput() {
 void handleSMSInput() {
   //totalErrors = 0;  //do we want to reset here? not sure why i did this
   int8_t numberOfSMSs = fona.getNumSMS();
-
-  if (numberOfSMSs == 0)
-    return;
 
   char smsSender[16];
   char smsValue[51];
@@ -1006,7 +1017,13 @@ void setupSerial() {
 #endif
 
 void setupFONA() {
+#ifdef ADAFRUIT_FONA_SHIELD
   fonaSerial->begin(4800);
+#endif
+#ifdef AND_TECH_SIM808_BREAKOUT
+  fonaSerial->begin(9600);
+#endif
+
   if (! fona.begin(*fonaSerial)) {
     debugPrintln(F("Couldn't find FONA"));
     while (1);
