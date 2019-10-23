@@ -35,15 +35,15 @@
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-//#define VAN_TEST
 #define VAN_PROD
+//#define VAN_TEST
 //#define NEW_HARDWARE_ONLY  // Initializes new FONA/SIM808 module as well as new arduino's EEPROM
 
-//#define BOARD_MEGA
 #define BOARD_UNO_NANO
+//#define BOARD_MEGA
 
-//#define ADAFRUIT_FONA_SHIELD
 #define AND_TECH_SIM808_BREAKOUT
+//#define ADAFRUIT_FONA_SHIELD
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -208,6 +208,7 @@ void watchDogForGeofence() {
 
   if (follow) {
     sendGeofenceWarning(true);
+    delay(20000);
     return;
   }
 
@@ -876,6 +877,7 @@ void sendRawCommand(const __FlashStringHelper* command) {
   if (fona.available()) {
     flushFONA();
   }
+  delay(1000);
 }
 
 void toLower(char* str) {
@@ -1025,8 +1027,9 @@ void setupFONA() {
 #endif
 
   if (! fona.begin(*fonaSerial)) {
-    debugPrintln(F("Couldn't find FONA"));
-    while (1);
+    debugPrintln(F("Couldn't find FONA, restarting."));
+    delay(30000);
+    resetFONA();
   }
 
   debugPrintln(F("FONA is OK"));
@@ -1077,16 +1080,12 @@ void initEEPROM() {
 void initFONA() {
   // used on brand-new FONA module
   debugPrintln(F("Begin initFONA()"));
+  sendRawCommand(F("ATZ"));                 // Factory reset
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
-  delay(3000);
   sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
-  delay(2000);
   sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
-  delay(5000);
   sendRawCommand(F("AT+CMEE=0"));           // Turn on verbose mode
-  delay(3000);
   sendRawCommand(F("AT&W"));                // save writeable settings
-  delay(5000);
   debugPrintln(F("End initFONA().\n\nPlease update #ifdefs and restart."));
   while (1) {}
 }
