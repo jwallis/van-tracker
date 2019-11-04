@@ -67,9 +67,9 @@
 #define FONA_TX_PIN 11
 #endif
 
-#define KILL_SWITCH_PIN_A 5
-#define KILL_SWITCH_PIN_B 6
-#define GEOFENCE_PIN 7
+#define KILL_SWITCH_RELAY_PIN 5
+#define KILL_SWITCH_LED_PIN 6
+#define GEOFENCE_LED_PIN 7
 
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX_PIN, FONA_RX_PIN);
 SoftwareSerial *fonaSerial = &fonaSS;
@@ -996,18 +996,18 @@ void pinSetup() {
   pinMode(RESET_PIN, OUTPUT);
   digitalWrite(RESET_PIN, HIGH);
   
-  pinMode(GEOFENCE_PIN, OUTPUT);
-  pinMode(KILL_SWITCH_PIN_A, OUTPUT);
-  pinMode(KILL_SWITCH_PIN_B, OUTPUT);
+  pinMode(GEOFENCE_LED_PIN, OUTPUT);
+  pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
+  pinMode(KILL_SWITCH_LED_PIN, OUTPUT);
 }
 
 void setKillSwitchPins(bool tf) {
-  digitalWrite(KILL_SWITCH_PIN_A, tf);
-  digitalWrite(KILL_SWITCH_PIN_B, tf);
+  digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
+  digitalWrite(KILL_SWITCH_LED_PIN, tf);
 }
 
 void setGeofencePins(bool tf) {
-  digitalWrite(GEOFENCE_PIN, tf);
+  digitalWrite(GEOFENCE_LED_PIN, tf);
 }
 
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY
@@ -1084,7 +1084,7 @@ void initFONA() {
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
   sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
   sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
-  sendRawCommand(F("AT+CMEE=0"));           // Turn on verbose mode
+  sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
   sendRawCommand(F("AT&W"));                // save writeable settings
   debugPrintln(F("End initFONA().\n\nPlease update #ifdefs and restart."));
   while (1) {}
