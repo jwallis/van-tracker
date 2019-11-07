@@ -848,11 +848,14 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
 }
 
 void resetFONA() {
-//  digitalWrite(RESET_PIN, LOW);
-//  delay(5000);
-//  digitalWrite(RESET_PIN, HIGH);
+  // reset sim808
+  sendRawCommand(F("AT+CPOWD=1"));
+  delay(45000);
+
+  // reset arduino
   wdt_disable();
   wdt_enable(WDTO_15MS);
+  debugPrintln(F("about to reset"));
   while (1) {}
 }
 
