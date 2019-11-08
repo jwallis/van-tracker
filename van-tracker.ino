@@ -70,6 +70,7 @@
 #define KILL_SWITCH_RELAY_PIN 5
 #define KILL_SWITCH_LED_PIN 6
 #define GEOFENCE_LED_PIN 7
+#define DEBUG_PIN 13
 
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX_PIN, FONA_RX_PIN);
 SoftwareSerial *fonaSerial = &fonaSS;
@@ -107,9 +108,6 @@ void setup() {
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
   setupFONA();
-//  pinSetup();
-//  waitUntilSMSReady();
-//  moreSetup();
   initEEPROM();
   initFONA();
 #endif
@@ -129,7 +127,10 @@ void loop() {
   flushFONA();
 #endif
 
+  debugBlink(2);
   checkSMSInput();
+
+  debugBlink(3);
   watchDog();
   delay(500);
 }
@@ -179,7 +180,19 @@ int getCurrentMinuteShort() {
   
   getTime(currentTimeStr);
 
+  for (short i = 0; i < 3; i++) {
+    debugPrintln(F("in getCurrentMinuteShort"));
+    getTime(currentTimeStr);
+    if (currentTimeStr[0] == '"')
+      break;
+    delay(1000 * (i+1));
+  }
+
   // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
+  if (!currentTimeStr[0] == '"')
+    totalErrors++;
+  debugPrintln(currentTimeStr);
+
   currentMinuteStr[0] = currentTimeStr[13];
   currentMinuteStr[1] = currentTimeStr[14];
   currentMinuteStr[2] = '\0';
@@ -293,6 +306,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 void fixErrors(const __FlashStringHelper* message) {
 
   //TBD do something good here
+  //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
   char ownerPhoneNumber[15];
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
@@ -306,6 +320,8 @@ void checkSMSInput() {
 
   for (int i = 0; i < 8; i++) {
     numberOfSMSs = fona.getNumSMS();
+    debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
+
     if (numberOfSMSs == 0)
       return;
 
@@ -330,6 +346,11 @@ void handleSMSInput() {
 
   // the SMS "slots" start at 1, not 0
   for (int8_t smsSlotNumber = 1; smssFound < numberOfSMSs; smsSlotNumber++) {
+
+    // This is for handling possible runaway (infinite loop) if sim808 reports there is > 0 SMSs, but when checking individual slots, they all report they're empty
+    if (smsSlotNumber == 10)
+      break;
+
     if (isSMSSlotFilled(smsSlotNumber))
       smssFound++;
     else
@@ -808,6 +829,15 @@ void sendSMS(char* send_to, const __FlashStringHelper* message) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 //HELPERS
 ///////////////////////////////////////////////////////////////////////////////////////////
+void debugBlink(int i) {
+  for (int j=0; j < i; j++) {
+    digitalWrite(13, HIGH);
+    delay(150);
+    digitalWrite(13, LOW);
+    delay(300);
+  }
+}
+
 bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   // smsValue:
   // fence hours 0 21
@@ -1009,6 +1039,7 @@ void pinSetup() {
   pinMode(GEOFENCE_LED_PIN, OUTPUT);
   pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
   pinMode(KILL_SWITCH_LED_PIN, OUTPUT);
+  pinMode(DEBUG_PIN, OUTPUT);  // for debugging only
 }
 
 void setKillSwitchPins(bool tf) {
@@ -1036,17 +1067,22 @@ void setupFONA() {
   fonaSerial->begin(9600);
 #endif
 
+  // TBD make this loop for up to 90s
   if (! fona.begin(*fonaSerial)) {
+    debugBlink(10);
     debugPrintln(F("Couldn't find FONA, restarting."));
     delay(30000);
     resetFONA();
   }
-
+  debugBlink(5);
   debugPrintln(F("FONA is OK"));
 }
 
 void waitUntilSMSReady() {
+  debugPrint(F("Waiting until SMS is ready"));
+  
   for (int i = 0; i < 15; i++) {
+    debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
       debugPrintln(F("SMS is ready"));
       return;
@@ -1090,10 +1126,13 @@ void initEEPROM() {
 void initFONA() {
   // used on brand-new FONA module
   debugPrintln(F("Begin initFONA()"));
-  sendRawCommand(F("ATZ"));                 // Factory reset
+  sendRawCommand(F("ATZ"));                 // Reset settings
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
-  sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
   sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
+
+// let's keep this LED on for now...
+//  sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
+
   sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
   sendRawCommand(F("AT&W"));                // save writeable settings
   debugPrintln(F("End initFONA().\n\nPlease update #ifdefs and restart."));
