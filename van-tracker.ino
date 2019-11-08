@@ -107,9 +107,9 @@ void setup() {
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
   setupFONA();
-  pinSetup();
-  waitUntilSMSReady();
-  moreSetup();
+//  pinSetup();
+//  waitUntilSMSReady();
+//  moreSetup();
   initEEPROM();
   initFONA();
 #endif
@@ -142,8 +142,9 @@ void watchDog() {
 }
 
 void watchDogForErrors() {
-  if (totalErrors > 10) {
-    debugPrintln(F("_____________ TOTAL ERRORS > 10 _______________"));
+  if (totalErrors > 2) {
+    totalErrors = 0;
+    debugPrintln(F("_____________ TOTAL ERRORS > 2 _______________"));
     fixErrors(F("watchDogForErrors()"));
   }
 }
@@ -224,7 +225,9 @@ void watchDogForGeofence() {
 
   if (lastGeofenceWarningMinute != -1) {
 
-    // if it's been < 5 minutes, do NOT take action
+    // If it's been < 5 minutes since last GPS query, do not take action i.e. we'll only check for breaking the fence every 5 minutes.
+    // This is in case the fence IS broken, sending > every 5 min doesn't help.  User can use follow mode.
+
     // lastQuery = 10, current = 20
     if (lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
       return;
@@ -293,15 +296,15 @@ void fixErrors(const __FlashStringHelper* message) {
   char ownerPhoneNumber[15];
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
+  debugPrint(F("in fixErrors: "));debugPrintln(message);
   sendSMS(ownerPhoneNumber, message);
-  debugPrintln(message);
   resetFONA();
 }
 
 void checkSMSInput() {
   int8_t numberOfSMSs;
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 8; i++) {
     numberOfSMSs = fona.getNumSMS();
     if (numberOfSMSs == 0)
       return;
@@ -848,7 +851,11 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
 }
 
 void resetFONA() {
-  // reset sim808
+  // reset sim808.  From the sim808 HW manual:
+  //    Normal power off by sending the AT command “AT+CPOWD=1” or using the PWRKEY.
+  //    The power management unit shuts down the power supply for the baseband part of the
+  //    module, and only the power supply for the RTC is remained. Software is not active. The
+  //    serial port is not accessible. Power supply (connected to VBAT) remains applied.
   sendRawCommand(F("AT+CPOWD=1"));
   delay(45000);
 
