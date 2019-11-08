@@ -27,6 +27,16 @@
     -fence radius 234
 */
 
+/*
+Error codes causing restart (2 long followed by THIS MANY shorts):
+  1 = in setupFONA(): "Couldn't find FONA, restarting."
+  2 = in waitUntilSMSReady(): "SMS never became ready, restarting."
+  3 = failed in getCurrentMinuteShort()
+  4 = failed in checkSMSInput()
+  5 = failed to turn on GPS
+  6 = failed to get GPS satellite fix
+  7 = failed in deleteSMS()
+*/
 
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -92,14 +102,15 @@ Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adaf
 #define KILLSWITCHEND_CHAR_3        43
 #define OWNERPHONENUMBER_CHAR_15    46
 
-uint8_t totalErrors = 0;
+short totalErrors = 0;
+short lastError = 0;
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
 void setup() {
 #ifdef VAN_PROD
-  setupFONA();
   pinSetup();
+  setupFONA();
   waitUntilSMSReady();
   moreSetup();
   //TBD - first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
@@ -113,9 +124,9 @@ void setup() {
 #endif
 
 #ifdef VAN_TEST
+  pinSetup();
   setupSerial();
   setupFONA();
-  pinSetup();
   waitUntilSMSReady();
   moreSetup();
 #endif
@@ -127,10 +138,10 @@ void loop() {
   flushFONA();
 #endif
 
-  debugBlink(2);
+  debugBlink(0, 1);
   checkSMSInput();
 
-  debugBlink(3);
+  debugBlink(0, 2);
   watchDog();
   delay(500);
 }
@@ -146,7 +157,7 @@ void watchDogForErrors() {
   if (totalErrors > 2) {
     totalErrors = 0;
     debugPrintln(F("_____________ TOTAL ERRORS > 2 _______________"));
-    fixErrors(F("watchDogForErrors()"));
+    fixErrors(lastError, F("watchDogForErrors()"));
   }
 }
 
@@ -189,8 +200,10 @@ int getCurrentMinuteShort() {
   }
 
   // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
-  if (!currentTimeStr[0] == '"')
+  if (!currentTimeStr[0] == '"') {
     totalErrors++;
+    lastError = 3;
+  }
   debugPrintln(currentTimeStr);
 
   currentMinuteStr[0] = currentTimeStr[13];
@@ -303,9 +316,9 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   lastGeofenceWarningMinute = getCurrentMinuteShort();
 }
 
-void fixErrors(const __FlashStringHelper* message) {
+void fixErrors(short shortBlinks, const __FlashStringHelper* message) {
+  debugBlink(2, shortBlinks);
 
-  //TBD do something good here
   //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
   char ownerPhoneNumber[15];
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -334,11 +347,11 @@ void checkSMSInput() {
   }
   debugPrintln(F("failure in checkSMSInput()"));
   totalErrors++;
+  lastError = 4;
 }
 
 void handleSMSInput() {
-  //totalErrors = 0;  //do we want to reset here? not sure why i did this
-  int8_t numberOfSMSs = fona.getNumSMS();
+  short numberOfSMSs = fona.getNumSMS();
 
   char smsSender[16];
   char smsValue[51];
@@ -720,6 +733,7 @@ void setFONAGPS(bool tf) {
   // error, give up
   if (fona.GPSstatus() < 0) {
     totalErrors++;
+    lastError = 5;
     debugPrintln(F("Failed to turn on GPS"));
     return;
   }
@@ -740,6 +754,7 @@ void setFONAGPS(bool tf) {
   // no fix, give up
   if (fona.GPSstatus() < 2) {
     totalErrors++;
+    lastError = 6;
     debugPrintln(F("Failed to get GPS fix"));
     return;
   }
@@ -799,6 +814,7 @@ void deleteSMS(uint8_t msg_number) {
   }
   debugPrintln(F("  Failed to delete SMS"));
   totalErrors++;
+  lastError = 7;
 }
 
 void sendSMS(char* send_to, char* message) {
@@ -829,8 +845,14 @@ void sendSMS(char* send_to, const __FlashStringHelper* message) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 //HELPERS
 ///////////////////////////////////////////////////////////////////////////////////////////
-void debugBlink(int i) {
-  for (int j=0; j < i; j++) {
+void debugBlink(short longBlinks, short shortBlinks) {
+  for (int cnt=0; cnt < longBlinks; cnt++) {
+    digitalWrite(13, HIGH);
+    delay(1000);
+    digitalWrite(13, LOW);
+    delay(300);    
+  }
+  for (int cnt=0; cnt < shortBlinks; cnt++) {
     digitalWrite(13, HIGH);
     delay(150);
     digitalWrite(13, LOW);
@@ -1069,12 +1091,9 @@ void setupFONA() {
 
   // TBD make this loop for up to 90s
   if (! fona.begin(*fonaSerial)) {
-    debugBlink(10);
-    debugPrintln(F("Couldn't find FONA, restarting."));
-    delay(30000);
-    resetFONA();
+    fixErrors(1, F("Couldn't find FONA, restarting."));
   }
-  debugBlink(5);
+  debugBlink(0, 5);
   debugPrintln(F("FONA is OK"));
 }
 
@@ -1084,12 +1103,12 @@ void waitUntilSMSReady() {
   for (int i = 0; i < 15; i++) {
     debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
-      debugPrintln(F("SMS is ready"));
+      debugPrintln(F("\nSMS is ready"));
       return;
     }
     delay(1000 * (i+1));
   }
-  fixErrors(F("waitUntilSMSReady()"));
+  fixErrors(2, F("SMS never became ready, restarting."));
 }
 
 void moreSetup() {
