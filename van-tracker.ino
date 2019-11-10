@@ -806,28 +806,6 @@ void getTime(char* currentTime) {
 }
 
 ////////////////////////////////
-//GPRS
-
-//TBD
-void turnGPRSOff() {
-  for (int i = 0; i < 3; i++) {
-    if (fona.enableGPRS(false))
-      return;
-    delay(1000);
-  }
-  debugPrintln(F("  Failed to turn GPRS off"));
-}
-
-void turnGPRSOn() {
-  for (int i = 0; i < 3; i++) {
-    if (fona.enableGPRS(true))
-      return;
-    delay(1000);
-  }
-  debugPrintln(F("  Failed to turn GPRS on"));
-}
-
-////////////////////////////////
 //SMS
 
 void deleteSMS(uint8_t msg_number) {
@@ -1350,14 +1328,6 @@ void handleSerialInput(String command) {
   if (strcmp(temp, "w") == 0) {
         watchDog();
   }
-  if (strcmp(temp, "t") == 0) {
-//        debugPrintln(ggg("00", "00", "\"19/09/19,17:03:01-20\"")); //T
-//        debugPrintln(ggg("01", "02", "\"19/09/19,17:03:02-20\"")); //F
-//        debugPrintln(ggg("17", "18", "\"19/09/19,17:03:03-20\"")); //T
-//        debugPrintln(ggg("22", "07", "\"19/09/19,17:03:04-20\"")); //F
-//        debugPrintln(ggg("23", "21", "\"19/09/19,17:03:05-20\"")); //T
-  }
-
 
   if (strcmp(temp, "b") == 0) {
         uint16_t vbat;
@@ -1365,8 +1335,7 @@ void handleSerialInput(String command) {
         debugPrintln(vbat);
         fona.getBattPercent(&vbat);
         debugPrintln(vbat);
-      }
-      
+  }
 
   if (strcmp(temp, "S") == 0) {
     debugPrintln(F("Creating SERIAL TUBE"));
@@ -1491,31 +1460,8 @@ void handleSerialInput(String command) {
     testHandleSMSInput(smsSender, smsValue);
   }
 
-//  if (strcmp(temp, "g") == 0) {
-//    turnGPRSOff();
-//  }
-//  if (strcmp(temp, "G") == 0) {
-//    // turn GPRS on
-//    if (!fona.enableGPRS(true))
-//      debugPrintln(F("Failed to turn on"));
-//  }
-//  if (strcmp(temp, "l") == 0) {
-//    // check for GSMLOC (requires GPRS)
-//    uint16_t returncode;
-//    char replybuffer[120];
-//
-//    if (!fona.getGSMLoc(&returncode, replybuffer, 250))
-//      debugPrintln(F("Failed!"));
-//    if (returncode == 0) {
-//      debugPrintln(replybuffer);
-//    } else {
-//      Serial.print(F("Fail code #")); debugPrintln(returncode);
-//    }
-//  }
-
   flushSerial();
   flushFONA();
-
 }
 
 void testHandleSMSInput(char* smsSender, char* smsValue) {
@@ -1592,45 +1538,5 @@ uint16_t readnumber() {
   }
   return x;
 }
-
-//uint8_t readline(char *buff, uint8_t maxbuff, uint16_t timeout) {
-//  uint16_t buffidx = 0;
-//  bool timeoutvalid = true;
-//  if (timeout == 0) timeoutvalid = false;
-//
-//  while (true) {
-//    if (buffidx > maxbuff) {
-//      //debugPrintln(F("SPACE"));
-//      break;
-//    }
-//
-//    while (Serial.available()) {
-//      char c =  Serial.read();
-//
-//      //Serial.print(c, HEX); Serial.print("#"); debugPrintln(c);
-//
-//      if (c == '\r') continue;
-//      if (c == 0xA) {
-//        if (buffidx == 0)   // the first 0x0A is ignored
-//          continue;
-//
-//        timeout = 0;         // the second 0x0A is the end of the line
-//        timeoutvalid = true;
-//        break;
-//      }
-//      buff[buffidx] = c;
-//      buffidx++;
-//    }
-//
-//    if (timeoutvalid && timeout == 0) {
-//      //debugPrintln(F("TIMEOUT"));
-//      break;
-//    }
-//    delay(1);
-//  }
-//  buff[buffidx] = 0;  // null term
-//  return buffidx;
-//}
-
 
 #endif
