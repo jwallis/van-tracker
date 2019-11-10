@@ -130,7 +130,6 @@ void setup() {
   setupFONA();
   waitUntilSMSReady();
   moreSetup();
-  //TBD - first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
 #endif
   
 #ifdef NEW_HARDWARE_ONLY
@@ -164,17 +163,17 @@ void loop() {
 }
 
 void watchDog() {
-  watchDogForErrors();
-  watchDogForTurnOffGPS();
   watchDogForKillSwitch();
   watchDogForGeofence();
+  watchDogForTurnOffGPS();
+  watchDogForErrors();
 }
 
 void watchDogForErrors() {
   if (totalErrors > 2) {
     totalErrors = 0;
     debugPrintln(F("_____________ TOTAL ERRORS > 2 _______________"));
-    fixErrors(lastError, F("watchDogForErrors()"));
+    reportAndRestart(lastError, F("watchDogForErrors()"));
   }
 }
 
@@ -209,7 +208,6 @@ int getCurrentMinuteShort() {
   getTime(currentTimeStr);
 
   for (short i = 0; i < 3; i++) {
-    debugPrintln(F("in getCurrentMinuteShort"));
     getTime(currentTimeStr);
     if (currentTimeStr[0] == '"')
       break;
@@ -221,7 +219,6 @@ int getCurrentMinuteShort() {
     totalErrors++;
     lastError = 3;
   }
-  debugPrintln(currentTimeStr);
 
   currentMinuteStr[0] = currentTimeStr[13];
   currentMinuteStr[1] = currentTimeStr[14];
@@ -331,18 +328,6 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   }
 
   lastGeofenceWarningMinute = getCurrentMinuteShort();
-}
-
-void fixErrors(short shortBlinks, const __FlashStringHelper* message) {
-  debugBlink(2, shortBlinks);
-
-  //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
-  char ownerPhoneNumber[15];
-  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-
-  debugPrint(F("in fixErrors: "));debugPrintln(message);
-  sendSMS(ownerPhoneNumber, message);
-  resetFONA();
 }
 
 void checkSMSInput() {
@@ -765,10 +750,19 @@ void setFONAGPS(bool tf) {
     delay(4000);
   }
 
-  // no fix, wait and ask again
+  
+  char currentLat[12];
+  char currentLon[12];
+
+  // wait up to 90s to get GPS fix
   for (int j = 1; j < 9; j++) {
     if (fona.GPSstatus() >= 2) {
       debugBlink(1,8);
+
+      // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
+      getGPSLatLon(currentLat, currentLon);
+      delay(3000);
+      getGPSLatLon(currentLat, currentLon);
       return;
     }
     delay(j * 2000);
@@ -795,6 +789,15 @@ void getGPSLatLon(char* latitude, char* longitude) {
   // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
   getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
   getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
+
+#ifdef VAN_TEST
+  char message[70];
+  strcpy(message, "google.com/search?q=");
+  strcat(message, latitude);
+  strcat(message, ",");
+  strcat(message, longitude);
+  debugPrintln(message);
+#endif
 }
 
 void getTime(char* currentTime) {
@@ -935,7 +938,19 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
   return false;
 }
 
-void resetFONA() {
+void reportAndRestart(short shortBlinks, const __FlashStringHelper* message) {
+  debugBlink(2,shortBlinks);
+
+  //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
+  char ownerPhoneNumber[15];
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
+  debugPrint(F("in reportAndRestart: "));debugPrintln(message);
+  sendSMS(ownerPhoneNumber, message);
+  restartSystem();
+}
+
+void restartSystem() {
   // reset sim808.  From the sim808 HW manual:
   //    Normal power off by sending the AT command “AT+CPOWD=1” or using the PWRKEY.
   //    The power management unit shuts down the power supply for the baseband part of the
@@ -1124,7 +1139,7 @@ void setupFONA() {
 
   // TBD make this loop for up to 90s
   if (! fona.begin(*fonaSerial)) {
-    fixErrors(1, F("Couldn't find FONA, restarting."));
+    reportAndRestart(1, F("Couldn't find FONA, restarting."));
   }
   debugBlink(0,5);
   debugPrintln(F("FONA is OK"));
@@ -1141,7 +1156,7 @@ void waitUntilSMSReady() {
     }
     delay(1000 * (i+1));
   }
-  fixErrors(2, F("SMS never became ready, restarting."));
+  reportAndRestart(2, F("SMS never became ready, restarting."));
 }
 
 void moreSetup() {
