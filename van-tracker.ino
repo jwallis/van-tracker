@@ -28,6 +28,23 @@
 */
 
 /*
+Baisc info codes (0 long followed by THIS MANY shorts):
+  1 = about to check inbound SMSs
+  2 = about to execute watchdog processes
+  5 = connected to FONA successfully
+
+Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok
+  1  = failed  sending SMS
+  2  = success sending SMS
+  3  = failed  deleting SMS
+  4  = success deleting SMS
+  5  = failed  turning on  GPS
+  6  = none
+  7  = failed  getting fix on GPS
+  8  = success getting fix on GPS
+  9  = failed  turning off GPS
+  10 = success turning off GPS
+
 Error codes causing restart (2 long followed by THIS MANY shorts):
   1 = in setupFONA(): "Couldn't find FONA, restarting."
   2 = in waitUntilSMSReady(): "SMS never became ready, restarting."
@@ -138,10 +155,10 @@ void loop() {
   flushFONA();
 #endif
 
-  debugBlink(0, 1);
+  debugBlink(0,1);
   checkSMSInput();
 
-  debugBlink(0, 2);
+  debugBlink(0,2);
   watchDog();
   delay(500);
 }
@@ -162,23 +179,23 @@ void watchDogForErrors() {
 }
 
 void watchDogForTurnOffGPS() {
-  // shut down GPS module after 20m of inactivity
+  // shut down GPS module after 10 minutes of inactivity
 
   if (lastGPSQueryMinute == -1)
     return;
 
   short currentMinuteInt = getCurrentMinuteShort();
 
-  // if it's been > 20 minutes, take action (turn off gps to save power)
+  // if it's been > 10 min, take action (turn off gps to save power)
 
-  // lastQuery = 10, current = 20
-  if (lastGPSQueryMinute <= currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 20) {
+  // case 1 example: lastQuery = 5:10pm, current = 5:20pm
+  if (lastGPSQueryMinute <= currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 10) {
       setFONAGPS(false);
       lastGPSQueryMinute = -1;
   }
 
-  // lastQuery = 50, current = 10
-  if (lastGPSQueryMinute > currentMinuteInt && lastGPSQueryMinute - currentMinuteInt < 40) {
+  // case 2 example: lastQuery = 5:55, current = 6:05pm
+  if (lastGPSQueryMinute > currentMinuteInt && lastGPSQueryMinute - currentMinuteInt < 50) {
       setFONAGPS(false);
       lastGPSQueryMinute = -1;
   }
@@ -252,7 +269,7 @@ void watchDogForGeofence() {
   if (lastGeofenceWarningMinute != -1) {
 
     // If it's been < 5 minutes since last GPS query, do not take action i.e. we'll only check for breaking the fence every 5 minutes.
-    // This is in case the fence IS broken, sending > every 5 min doesn't help.  User can use follow mode.
+    // This is in case the fence IS broken, sending > every 5 min doesn't help.  User can use follow mode if she wants rapid updates.
 
     // lastQuery = 10, current = 20
     if (lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
@@ -705,10 +722,13 @@ void setFONAGPS(bool tf) {
     fona.enableGPS(false);
 
     for (int k = 0; k < 3; k++) {
-      if (fona.GPSstatus() == 0)
+      if (fona.GPSstatus() == 0) {
+        debugBlink(1,10);
         return;
+      }
       delay(1000);
     }
+    debugBlink(1,9);
     debugPrintln(F("Failed to turn off GPS"));
     return;
   }
@@ -735,6 +755,7 @@ void setFONAGPS(bool tf) {
     totalErrors++;
     lastError = 5;
     debugPrintln(F("Failed to turn on GPS"));
+    debugBlink(1,5);
     return;
   }
 
@@ -746,8 +767,10 @@ void setFONAGPS(bool tf) {
 
   // no fix, wait and ask again
   for (int j = 1; j < 9; j++) {
-    if (fona.GPSstatus() >= 2)
+    if (fona.GPSstatus() >= 2) {
+      debugBlink(1,8);
       return;
+    }
     delay(j * 2000);
   }
 
@@ -756,6 +779,7 @@ void setFONAGPS(bool tf) {
     totalErrors++;
     lastError = 6;
     debugPrintln(F("Failed to get GPS fix"));
+    debugBlink(1,7);
     return;
   }
 }
@@ -808,11 +832,13 @@ void deleteSMS(uint8_t msg_number) {
     debugPrintln(F("  Attempting to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
       debugPrintln(F("  Success deleting SMS"));
+      debugBlink(1,4);
       return;
     }
     delay(i * 1000);
   }
   debugPrintln(F("  Failed to delete SMS"));
+  debugBlink(1,3);
   totalErrors++;
   lastError = 7;
 }
@@ -820,20 +846,26 @@ void deleteSMS(uint8_t msg_number) {
 void sendSMS(char* send_to, char* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
+
   if (!fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Failed to send SMS"));
+    debugBlink(1,1);
   } else {
     debugPrintln(F("  Success sending SMS"));
+    debugBlink(1,2);
   }
 }
 
 void sendSMS(char* send_to, const __FlashStringHelper* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
+
   if (!fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Failed to send SMS"));
+    debugBlink(1,1);
   } else {
     debugPrintln(F("  Success sending SMS"));
+    debugBlink(1,2);
   }
 }
 
@@ -858,6 +890,7 @@ void debugBlink(short longBlinks, short shortBlinks) {
     digitalWrite(13, LOW);
     delay(300);
   }
+  delay(300);
 }
 
 bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
@@ -890,7 +923,7 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
 
   short currentHour = getCurrentHourShort();
 
-  // simple case, current time is between start/end.  Start time is inclusive
+  // simple case, current time is between start/end.  Start time is inclusive, end time is exclusive
   if (currentHour >= atoi(startHour) && currentHour < atoi(endHour))
     return true;
 
@@ -1093,7 +1126,7 @@ void setupFONA() {
   if (! fona.begin(*fonaSerial)) {
     fixErrors(1, F("Couldn't find FONA, restarting."));
   }
-  debugBlink(0, 5);
+  debugBlink(0,5);
   debugPrintln(F("FONA is OK"));
 }
 
@@ -1119,7 +1152,7 @@ void moreSetup() {
 }
 
 void setAPN() {
-  //TBD
+  //TBD is this necessary?
   fona.setGPRSNetworkSettings(F(APN_ID));
 }
 
