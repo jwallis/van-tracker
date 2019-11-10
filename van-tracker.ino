@@ -48,7 +48,7 @@ Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, ev
 Error codes causing restart (2 long followed by THIS MANY shorts):
   1 = in setupFONA(): "Couldn't find FONA, restarting."
   2 = in waitUntilSMSReady(): "SMS never became ready, restarting."
-  3 = failed in getCurrentMinuteShort()
+  3 = failed in getTime()
   4 = failed in checkSMSInput()
   5 = failed to turn on GPS
   6 = failed to get GPS satellite fix
@@ -105,8 +105,6 @@ SoftwareSerial *fonaSerial = &fonaSS;
 
 Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
-
-#define APN_ID "wholesale"
 #define GEOFENCEENABLED_BOOL_1      0
 #define GEOFENCEHOMELAT_CHAR_12     1
 #define GEOFENCEHOMELON_CHAR_12     13
@@ -129,7 +127,6 @@ void setup() {
   pinSetup();
   setupFONA();
   waitUntilSMSReady();
-  moreSetup();
 #endif
   
 #ifdef NEW_HARDWARE_ONLY
@@ -144,7 +141,7 @@ void setup() {
   setupSerial();
   setupFONA();
   waitUntilSMSReady();
-  moreSetup();
+  printFONAType();
 #endif
 }
 
@@ -183,7 +180,7 @@ void watchDogForTurnOffGPS() {
   if (lastGPSQueryMinute == -1)
     return;
 
-  short currentMinuteInt = getCurrentMinuteShort();
+  short currentMinuteInt = getCurrentMinuteInt();
 
   // if it's been > 10 min, take action (turn off gps to save power)
 
@@ -201,24 +198,11 @@ void watchDogForTurnOffGPS() {
 }
 
 
-int getCurrentMinuteShort() {
+int getCurrentMinuteInt() {
   char currentTimeStr[23];
   char currentMinuteStr[3];
   
   getTime(currentTimeStr);
-
-  for (short i = 0; i < 3; i++) {
-    getTime(currentTimeStr);
-    if (currentTimeStr[0] == '"')
-      break;
-    delay(1000 * (i+1));
-  }
-
-  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
-  if (!currentTimeStr[0] == '"') {
-    totalErrors++;
-    lastError = 3;
-  }
 
   currentMinuteStr[0] = currentTimeStr[13];
   currentMinuteStr[1] = currentTimeStr[14];
@@ -226,7 +210,7 @@ int getCurrentMinuteShort() {
   return atoi(currentMinuteStr);
 }
 
-int getCurrentHourShort() {
+int getCurrentHourInt() {
   char currentTimeStr[23];
   char currentHourStr[3];
   
@@ -261,7 +245,7 @@ void watchDogForGeofence() {
     return;
   }
 
-  short currentMinuteInt = getCurrentMinuteShort();
+  short currentMinuteInt = getCurrentMinuteInt();
 
   if (lastGeofenceWarningMinute != -1) {
 
@@ -327,7 +311,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
     sendSMS(ownerPhoneNumber, F("Use 'follow enable' to receive rapid location updates"));
   }
 
-  lastGeofenceWarningMinute = getCurrentMinuteShort();
+  lastGeofenceWarningMinute = getCurrentMinuteInt();
 }
 
 void checkSMSInput() {
@@ -423,21 +407,19 @@ void handleSMSInput() {
 }
 
 void handleInfoReq(char* smsSender) {
-  char battery[12];
   uint8_t rssi;
   char ccid[22];
   char imei[16];
-  char message[141];
+  char message[90];
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  getBatteryStats(battery);
   rssi = fona.getRSSI();
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
 
-  sprintf(message, "Battery: %s\nRSSI: %u\nOwner: %s\nCCID: %s\nIMEI: %s\nAPN: %s", battery, rssi, ownerPhoneNumber, ccid, imei, APN_ID);
+  sprintf(message, "Owner: %s\nRSSI: %u\nCCID: %s\nIMEI: %s", ownerPhoneNumber, rssi, ccid, imei);
   sendSMS(smsSender, message);
 }
 
@@ -783,7 +765,7 @@ void getGPSLatLon(char* latitude, char* longitude) {
 
   setFONAGPS(true);
   fona.getGPS(0, gpsString, 120);
-  lastGPSQueryMinute = getCurrentMinuteShort();
+  lastGPSQueryMinute = getCurrentMinuteInt();
 
   // full string:
   // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
@@ -800,9 +782,21 @@ void getGPSLatLon(char* latitude, char* longitude) {
 #endif
 }
 
-void getTime(char* currentTime) {
+void getTime(char* currentTimeStr) {
   // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes
-  fona.getTime(currentTime, 23);
+  
+  for (short i = 0; i < 3; i++) {
+    fona.getTime(currentTimeStr, 23);
+    if (currentTimeStr[0] == '"')
+      break;
+    delay(1000 * (i+1));
+  }
+
+  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
+  if (!currentTimeStr[0] == '"') {
+    totalErrors++;
+    lastError = 3;
+  }
 }
 
 ////////////////////////////////
@@ -902,7 +896,7 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
   if (strcmp(startHour, endHour) == 0)
     return true;
 
-  short currentHour = getCurrentHourShort();
+  short currentHour = getCurrentHourInt();
 
   // simple case, current time is between start/end.  Start time is inclusive, end time is exclusive
   if (currentHour >= atoi(startHour) && currentHour < atoi(endHour))
@@ -1136,19 +1130,6 @@ void waitUntilSMSReady() {
   }
   reportAndRestart(2, F("SMS never became ready, restarting."));
 }
-
-void moreSetup() {
-  setAPN();
-#ifdef VAN_TEST
-  printFONAType();
-#endif
-}
-
-void setAPN() {
-  //TBD is this necessary?
-  fona.setGPRSNetworkSettings(F(APN_ID));
-}
-
 
 #ifdef NEW_HARDWARE_ONLY
 void initEEPROM() {
@@ -1500,7 +1481,6 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
   handleUnknownReq(smsSender);
 }
-
 
 void printFONAType() {
   switch (fona.type()) {
