@@ -317,7 +317,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 void checkSMSInput() {
   int8_t numberOfSMSs;
 
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 30; i++) {
     numberOfSMSs = fona.getNumSMS();
     debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
 
@@ -329,7 +329,7 @@ void checkSMSInput() {
       return;
     }
     debugPrintln(F("error in checkSMSInput()"));
-    delay(1000 * (i+1));
+    delay(1000);
   }
   debugPrintln(F("failure in checkSMSInput()"));
   totalErrors++;
@@ -365,48 +365,48 @@ void handleSMSInput() {
     debugPrintln(smsValue);
 
     if (strstr(smsValue, "loc")) {
-      handleLocReq(smsSender);
-      deleteSMS(smsSlotNumber);
+      if (handleLocReq(smsSender))
+        deleteSMS(smsSlotNumber);
       continue;
     }
 
     if (strstr(smsValue, "kill")) {
-      handleKillSwitchReq(smsSender, smsValue);
-      deleteSMS(smsSlotNumber);
+      if (handleKillSwitchReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
       continue;
     }
 
     if (strstr(smsValue, "fence")) {
-      handleGeofenceReq(smsSender, smsValue);
-      deleteSMS(smsSlotNumber);
+      if (handleGeofenceReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
       continue;
     }
 
     if (strstr(smsValue, "follow")) {
-      handleFollowReq(smsSender, smsValue);
-      deleteSMS(smsSlotNumber);
+      if (handleFollowReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
       continue;
     }
 
     if (strstr(smsValue, "owner")) {
-      handleOwnerPhoneNumberReq(smsSender, smsValue);
-      deleteSMS(smsSlotNumber);
+      if (handleOwnerPhoneNumberReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
       continue;
     }
 
     if (strstr(smsValue, "info")) {
-      handleInfoReq(smsSender);
-      deleteSMS(smsSlotNumber);
+      if (handleInfoReq(smsSender))
+        deleteSMS(smsSlotNumber);
       continue;
     }
 
     // default
-    handleUnknownReq(smsSender);
-    deleteSMS(smsSlotNumber);
+    if (handleUnknownReq(smsSender))
+      deleteSMS(smsSlotNumber);
   }
 }
 
-void handleInfoReq(char* smsSender) {
+bool handleInfoReq(char* smsSender) {
   uint8_t rssi;
   char ccid[22];
   char imei[16];
@@ -420,10 +420,10 @@ void handleInfoReq(char* smsSender) {
   fona.getIMEI(imei);
 
   sprintf(message, "Owner: %s\nRSSI: %u\nCCID: %s\nIMEI: %s", ownerPhoneNumber, rssi, ccid, imei);
-  sendSMS(smsSender, message);
+  return sendSMS(smsSender, message);
 }
 
-void handleLocReq(char* smsSender) {
+bool handleLocReq(char* smsSender) {
   char message[54];
   char latitude[12];
   char longitude[12];
@@ -431,24 +431,22 @@ void handleLocReq(char* smsSender) {
   getGPSLatLon(latitude, longitude);
 
   sprintf(message, "google.com/search?q=%s,%s", latitude, longitude);
-  sendSMS(smsSender, message);
+  return sendSMS(smsSender, message);
 }
 
-void handleFollowReq(char* smsSender, char* smsValue) {
+bool handleFollowReq(char* smsSender, char* smsValue) {
   if (strstr(smsValue, "enable") ) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
-    sendSMS(smsSender, F("Follow: ENABLED"));
-    return;
+    return sendSMS(smsSender, F("Follow: ENABLED"));
   }
   if (strstr(smsValue, "disable") ) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
-    sendSMS(smsSender, F("Follow: DISABLED"));
-    return;
+    return sendSMS(smsSender, F("Follow: DISABLED"));
   }
-  sendSMS(smsSender, F("Try \"follow\" plus:\nenable/disable"));  
+  return sendSMS(smsSender, F("Try \"follow\" plus:\nenable/disable"));  
 }
 
-void handleKillSwitchReq(char* smsSender, char* smsValue) {
+bool handleKillSwitchReq(char* smsSender, char* smsValue) {
   char message[64] = "";
 
   bool killSwitchEnabled;
@@ -496,14 +494,14 @@ void handleKillSwitchReq(char* smsSender, char* smsValue) {
       strcat(message, " (always on)");
     }
 
-    sendSMS(smsSender, message);
+    return sendSMS(smsSender, message);
   }
   else {
-    sendSMS(smsSender, F("Try \"kill\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)"));
+    return sendSMS(smsSender, F("Try \"kill\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)"));
   }
 }
 
-void handleGeofenceReq(char* smsSender, char* smsValue) {
+bool handleGeofenceReq(char* smsSender, char* smsValue) {
   char message[132] = "";
 
   bool geofenceEnabled;
@@ -585,14 +583,14 @@ void handleGeofenceReq(char* smsSender, char* smsValue) {
     strcat(message, ",");
     strcat(message, geofenceHomeLon);
 
-    sendSMS(smsSender, message);
+    return sendSMS(smsSender, message);
   }
   else {
-    sendSMS(smsSender, F("Try \"fence\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)\nhome (uses current loc)\nradius 100 (100 feet)"));
+    return sendSMS(smsSender, F("Try \"fence\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)\nhome (uses current loc)\nradius 100 (100 feet)"));
   }
 }
 
-void handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
+bool handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
   char message[70] = "";
   char ownerPhoneNumber[15] = "";
 
@@ -615,11 +613,11 @@ void handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
     sprintf(message, "%s\nTry \"owner\" plus:\nset (include number or blank for YOUR number)", ownerPhoneNumber);
   }
 
-  sendSMS(smsSender, message);
+  return sendSMS(smsSender, message);
 }
 
-void handleUnknownReq(char* smsSender) {
-  sendSMS(smsSender, F("Commands:\ninfo\nloc\nowner\nkill\nfence\nfollow"));
+bool handleUnknownReq(char* smsSender) {
+  return sendSMS(smsSender, F("Commands:\ninfo\nloc\nowner\nkill\nfence\nfollow"));
 }
 
 bool isSMSSlotFilled(int8_t smsSlotNumber) {
@@ -710,11 +708,12 @@ void setFONAGPS(bool tf) {
 
   int8_t status;
 
-  // error, keep trying status.  maybe we should turn off/on?
-  for (int i = 1; i < 7; i++) {
-    if (fona.GPSstatus() >= 0)
+  // Keep trying to get a valid (non-error) response. Maybe we should turn off/on?
+  for (int i = 1; i < 30; i++) {
+    if (fona.GPSstatus() >= 0) {
       break;
-    delay(i * 2000);
+    }
+    delay(2000);
   }
 
   // error, give up
@@ -737,7 +736,7 @@ void setFONAGPS(bool tf) {
   char currentLon[12];
 
   // wait up to 90s to get GPS fix
-  for (int j = 1; j < 9; j++) {
+  for (int j = 1; j < 45; j++) {
     if (fona.GPSstatus() >= 2) {
       debugBlink(1,8);
 
@@ -747,7 +746,7 @@ void setFONAGPS(bool tf) {
       getGPSLatLon(currentLat, currentLon);
       return;
     }
-    delay(j * 2000);
+    delay(2000);
   }
 
   // no fix, give up
@@ -785,11 +784,11 @@ void getGPSLatLon(char* latitude, char* longitude) {
 void getTime(char* currentTimeStr) {
   // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes
   
-  for (short i = 0; i < 3; i++) {
+  for (short i = 0; i < 5; i++) {
     fona.getTime(currentTimeStr, 23);
     if (currentTimeStr[0] == '"')
       break;
-    delay(1000 * (i+1));
+    delay(1000);
   }
 
   // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
@@ -803,14 +802,14 @@ void getTime(char* currentTimeStr) {
 //SMS
 
 void deleteSMS(uint8_t msg_number) {
-  for (int i = 2; i < 10; i++) {
+  for (int i = 2; i < 40; i++) {
     debugPrintln(F("  Attempting to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
       debugPrintln(F("  Success deleting SMS"));
       debugBlink(1,4);
       return;
     }
-    delay(i * 1000);
+    delay(1000);
   }
   debugPrintln(F("  Failed to delete SMS"));
   debugBlink(1,3);
@@ -818,20 +817,22 @@ void deleteSMS(uint8_t msg_number) {
   lastError = 7;
 }
 
-void sendSMS(char* send_to, char* message) {
+bool sendSMS(char* send_to, char* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
 
-  if (!fona.sendSMS(send_to, message)) {
-    debugPrintln(F("  Failed to send SMS"));
-    debugBlink(1,1);
-  } else {
+  if (fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
+    return true;
+  } else {
+    debugPrintln(F("  Failed to send SMS"));
+    debugBlink(1,1);
+    return false;
   }
 }
 
-void sendSMS(char* send_to, const __FlashStringHelper* message) {
+bool sendSMS(char* send_to, const __FlashStringHelper* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
 
@@ -1120,13 +1121,13 @@ void setupFONA() {
 void waitUntilSMSReady() {
   debugPrint(F("Waiting until SMS is ready"));
   
-  for (int i = 0; i < 15; i++) {
+  for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
       debugPrintln(F("\nSMS is ready"));
       return;
     }
-    delay(1000 * (i+1));
+    delay(2000);
   }
   reportAndRestart(2, F("SMS never became ready, restarting."));
 }
