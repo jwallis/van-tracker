@@ -84,11 +84,12 @@ Error codes causing restart (2 long followed by THIS MANY shorts):
 #include <EEPROM.h>
 #include <avr/wdt.h>
 
-#define FONA_RX_PIN 2
-#define RESET_PIN 4
+#define STARTER_INTERRUPT_ID 0   // interrupt 0 == pin 2.  I hate that.
+#define STARTER_INTERRUPT_PIN 2  // interrupt 0 == pin 2.  I hate that.
+#define FONA_RX_PIN 3
 
 #ifdef BOARD_UNO_NANO
-#define FONA_TX_PIN 3
+#define FONA_TX_PIN 4
 #endif
 #ifdef BOARD_MEGA
 #define FONA_TX_PIN 11
@@ -97,6 +98,7 @@ Error codes causing restart (2 long followed by THIS MANY shorts):
 #define KILL_SWITCH_RELAY_PIN 5
 #define KILL_SWITCH_LED_PIN 6
 #define GEOFENCE_LED_PIN 7
+#define RESET_PIN 8
 #define DEBUG_PIN 13
 
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX_PIN, FONA_RX_PIN);
@@ -121,6 +123,9 @@ short totalErrors = 0;
 short lastError = 0;
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
+
+volatile bool killSwitchOnVolatile = false;
+volatile bool startAttemptedWhileKillSwitchOnVolatile = false;
 
 void setup() {
 #ifdef VAN_PROD
@@ -225,6 +230,15 @@ int getCurrentHourInt() {
 
 void watchDogForKillSwitch() {
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+  if (startAttemptedWhileKillSwitchOnVolatile) {
+    
+    char ownerPhoneNumber[15];
+    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
+    if (sendSMS(ownerPhoneNumber, F("WARNING: Start attempted while kill switch enabled"))) {
+      startAttemptedWhileKillSwitchOnVolatile = false;
+    }
+  }
 }
 
 void watchDogForGeofence() {
@@ -1076,6 +1090,9 @@ void flushFONA() {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void pinSetup() {
+  pinMode(STARTER_INTERRUPT_PIN, INPUT);
+  attachInterrupt(STARTER_INTERRUPT_ID, starterISR, CHANGE);
+
   pinMode(RESET_PIN, OUTPUT);
   digitalWrite(RESET_PIN, HIGH);
   
@@ -1085,8 +1102,17 @@ void pinSetup() {
   pinMode(DEBUG_PIN, OUTPUT);  // for debugging only
 }
 
+void starterISR() {
+  delay(20);
+  digitalWrite(KILL_SWITCH_RELAY_PIN, killSwitchOnVolatile && digitalRead(STARTER_INTERRUPT_PIN));
+  startAttemptedWhileKillSwitchOnVolatile = true;
+}
+
 void setKillSwitchPins(bool tf) {
-  digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
+  // In the past we would just turn the kill switch relay on in this function, but sitting overnight it would drain the battery.
+  // Now we just say "the kill switch is on" and when the board is signaled (from trying to start the car), then
+  // the Interrupt Service Routine above will actually turn the relay on.
+  killSwitchOnVolatile = tf;
   digitalWrite(KILL_SWITCH_LED_PIN, tf);
 }
 
