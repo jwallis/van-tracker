@@ -28,12 +28,14 @@
 */
 
 /*
-Baisc info codes (0 long followed by THIS MANY shorts):
+Blink debug codes - the Arduino Nono will blink these codes during operation:
+
+Basic info codes (0 longs followed by THIS MANY shorts):
   1 = about to check inbound SMSs
   2 = about to execute watchdog processes
-  5 = connected to FONA successfully
+  5 = connected to FONA successfully at startup
 
-Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok
+Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = failed  sending SMS
   2  = success sending SMS
   3  = failed  deleting SMS
@@ -45,7 +47,7 @@ Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, ev
   9  = failed  turning off GPS
   10 = success turning off GPS
 
-Error codes causing restart (2 long followed by THIS MANY shorts):
+Error codes causing restart (2 longs followed by THIS MANY shorts):
   1 = in setupFONA(): "Couldn't find FONA, restarting."
   2 = in waitUntilSMSReady(): "SMS never became ready, restarting."
   3 = failed in getTime()
@@ -151,15 +153,14 @@ void loop() {
   flushFONA();
 #endif
 
-  debugBlink(0,1);
   checkSMSInput();
-
-  debugBlink(0,2);
   watchDog();
   delay(500);
 }
 
 void watchDog() {
+  debugBlink(0,2);
+
   watchDogForKillSwitch();
   watchDogForGeofence();
   watchDogForTurnOffGPS();
@@ -317,6 +318,8 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 
 void checkSMSInput() {
   int8_t numberOfSMSs;
+
+  debugBlink(0,1);
 
   for (int i = 0; i < 30; i++) {
     numberOfSMSs = fona.getNumSMS();
@@ -841,12 +844,14 @@ bool sendSMS(char* send_to, const __FlashStringHelper* message) {
   debugPrintln(F("  Attempting to send SMS:"));
   debugPrintln(message);
 
-  if (!fona.sendSMS(send_to, message)) {
-    debugPrintln(F("  Failed to send SMS"));
-    debugBlink(1,1);
-  } else {
+  if (fona.sendSMS(send_to, message)) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
+    return true;
+  } else {
+    debugPrintln(F("  Failed to send SMS"));
+    debugBlink(1,1);
+    return false;
   }
 }
 
