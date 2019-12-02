@@ -247,17 +247,18 @@ void watchDogForGeofence() {
 
   short currentMinuteInt = getCurrentMinuteInt();
 
+  // If the geofence was broken...
   if (lastGeofenceWarningMinute != -1) {
 
-    // If it's been < 5 minutes since last GPS query, do not take action i.e. we'll only check for breaking the fence every 5 minutes.
-    // This is in case the fence IS broken, sending > every 5 min doesn't help.  User can use follow mode if she wants rapid updates.
+    // ...only send a warning SMS every 5 min.  User can use follow mode if she wants rapid updates.
 
-    // lastQuery = 10, current = 20
+    // There are 2 cases:
+    // A) current minute > last query minute, example lastQuery = 10, current = 20
     if (lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
       return;
     }
   
-    // lastQuery = 57, current = 05
+    // B) current minute < last query minute, example lastQuery = 57, current = 05
     if (lastGeofenceWarningMinute > currentMinuteInt && lastGeofenceWarningMinute - currentMinuteInt > 55) {
       return;
     }
@@ -410,7 +411,9 @@ bool handleInfoReq(char* smsSender) {
   uint8_t rssi;
   char ccid[22];
   char imei[16];
-  char message[90];
+  char currentTimeStr[23];
+  char message[130];
+  
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -419,7 +422,9 @@ bool handleInfoReq(char* smsSender) {
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
 
-  sprintf(message, "Owner: %s\nRSSI: %u\nCCID: %s\nIMEI: %s", ownerPhoneNumber, rssi, ccid, imei);
+  getTime(currentTimeStr);
+
+  sprintf(message, "Owner: %s\nRSSI: %u\nCCID: %s\nIMEI: %s\nNetwork Time: %s", ownerPhoneNumber, rssi, ccid, imei, currentTimeStr);
   return sendSMS(smsSender, message);
 }
 
@@ -557,7 +562,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
   lastGeofenceWarningMinute = -1;
 
   if (message[0] || strstr(smsValue, "info")) {
-    //    Yay only 2k of RAM, this saves 54 bytes!!!!!!!
+    //    Yay only 2k of RAM, doing this all piecemeal (instead of big strings as is done in this comment) saves 54 bytes!!!!!!!
     //    if (geofenceEnabled)
     //      sprintf(message, "ENABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
     //    else
@@ -1318,6 +1323,18 @@ void handleSerialInput(String command) {
         fona.getBattPercent(&vbat);
         debugPrintln(vbat);
   }
+
+// for SERIAL TUBE:
+
+// AT+CGNSPWR=1 - turn on gps
+// AT+CGPSSTATUS? - get gps status
+// AT+CGNSINF - get loc
+// AT+CBC - battery
+// AT+CMGF=1 - set text SMS mode
+// AT+CPMS? - get number of SMSs
+// AT&V - get profiles
+// AT+CCLK? - get clock
+// AT+CPOWD=1 - power down module
 
   if (strcmp(temp, "S") == 0) {
     debugPrintln(F("Creating SERIAL TUBE"));
