@@ -243,7 +243,6 @@ void watchDogForGeofence() {
 
   if (follow) {
     sendGeofenceWarning(true);
-    delay(20000);
     return;
   }
 
@@ -586,13 +585,32 @@ bool handleInfoReq(char* smsSender) {
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
+  bool lockdown;
+  char lockdownStr[9];
+  EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdown);
+  
+  if (lockdown)
+    strcpy(lockdownStr, "Enabled");
+  else
+    strcpy(lockdownStr, "Disabled");
+
+  bool follow;
+  char followStr[9];
+  EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
+  
+  if (follow)
+    strcpy(followStr, "Enabled");
+  else
+    strcpy(followStr, "Disabled");
+
   rssi = fona.getRSSI();
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
 
   getTime(currentTimeStr);
 
-  sprintf(message, "Owner: %s\nRSSI: %u\nCCID: %s\nIMEI: %s\nNetwork Time: %s", ownerPhoneNumber, rssi, ccid, imei, currentTimeStr);
+
+  sprintf(message, "Owner: %s\nLockdown: %s\nFollow: %s\nRSSI: %u\nCCID: %s\nIMEI: %s\nNetwork Time: %s", ownerPhoneNumber, lockdownStr, followStr, rssi, ccid, imei, currentTimeStr);
   return sendSMS(smsSender, message);
 }
 
