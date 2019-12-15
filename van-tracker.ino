@@ -304,16 +304,16 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   if (follow)
     strcpy(message, "FOLLOW MODE");
   else
-    strcpy(message, "GEOFENCE WARNING");
+    strcpy(message, "GEOFENCE WARNING!");
 
-  strcat(message, ":\nHome:\ngoogle.com/search?q=");
-  strcat(message, geofenceHomeLat);
-  strcat(message, ",");
-  strcat(message, geofenceHomeLon);
   strcat(message, "\nCurrent:\ngoogle.com/search?q=");
   strcat(message, currentLat);
   strcat(message, ",");
   strcat(message, currentLon);
+  strcat(message, "\nHome:\ngoogle.com/search?q=");
+  strcat(message, geofenceHomeLat);
+  strcat(message, ",");
+  strcat(message, geofenceHomeLon);
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
