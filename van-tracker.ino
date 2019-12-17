@@ -186,8 +186,9 @@ void watchDog() {
 void watchDogForErrors() {
   if (totalErrors > 2) {
     totalErrors = 0;
-    debugPrintln(F("_____________ TOTAL ERRORS > 2 _______________"));
-    reportAndRestart(lastError, F("watchDogForErrors()"));
+    char message[30];
+    sprintf(message, "Restarting. Error code: %d", lastError); 
+    reportAndRestart(lastError, message);
   }
 }
 
@@ -1126,7 +1127,19 @@ void reportAndRestart(short shortBlinks, const __FlashStringHelper* message) {
   char ownerPhoneNumber[15];
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  debugPrint(F("in reportAndRestart: "));debugPrintln(message);
+  debugPrintln(message);
+  sendSMS(ownerPhoneNumber, message);
+  restartSystem();
+}
+
+void reportAndRestart(short shortBlinks, char* message) {
+  debugBlink(2,shortBlinks);
+
+  //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
+  char ownerPhoneNumber[15];
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
+  debugPrintln(message);
   sendSMS(ownerPhoneNumber, message);
   restartSystem();
 }
@@ -1227,6 +1240,10 @@ bool getOccurrenceInDelimitedString(char* in, char* out, short occur, char delim
 }
 
 bool outsideGeofence(char* lat1Str, char* lon1Str) {
+  if (lat1Str[0] == '\0') {
+    return false;
+  }
+
   char geofenceRadius[7];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
