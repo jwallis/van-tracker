@@ -84,6 +84,7 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 #include <avr/wdt.h>
+#include "util/delay.h"
 
 #define STARTER_INTERRUPT_ID 0   // interrupt 0 == pin 2.  I hate that.
 #define STARTER_INTERRUPT_PIN 2  // interrupt 0 == pin 2.  I hate that.
@@ -245,7 +246,7 @@ void watchDogForKillSwitch() {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-    if (sendSMS(ownerPhoneNumber, F("WARNING: Start attempted while kill switch enabled"))) {
+    if (sendSMS(ownerPhoneNumber, F("WARNING!\nStart attempted while kill switch enabled"))) {
       startAttemptedWhileKillSwitchOnVolatile = false;
     }
   }
@@ -1284,7 +1285,7 @@ void flushFONA() {
 
 void pinSetup() {
   pinMode(STARTER_INTERRUPT_PIN, INPUT);
-  attachInterrupt(STARTER_INTERRUPT_ID, starterISR, CHANGE);
+  attachInterrupt(STARTER_INTERRUPT_ID, starterISR, RISING);
 
   pinMode(RESET_PIN, OUTPUT);
   digitalWrite(RESET_PIN, HIGH);
@@ -1296,16 +1297,14 @@ void pinSetup() {
 }
 
 void starterISR() {
-  delay(20);
-  digitalWrite(KILL_SWITCH_RELAY_PIN, killSwitchOnVolatile && digitalRead(STARTER_INTERRUPT_PIN));
-  startAttemptedWhileKillSwitchOnVolatile = true;
+  _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
+  if (killSwitchOnVolatile && digitalRead(STARTER_INTERRUPT_PIN))
+    startAttemptedWhileKillSwitchOnVolatile = true;
 }
 
 void setKillSwitchPins(bool tf) {
-  // In the past we would just turn the kill switch relay on in this function, but sitting overnight it would drain the battery.
-  // Now we just say "the kill switch is on" and when the board is signaled (from trying to start the car), then
-  // the Interrupt Service Routine above will actually turn the relay on.
   killSwitchOnVolatile = tf;
+  digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
   digitalWrite(KILL_SWITCH_LED_PIN, tf);
 }
 
