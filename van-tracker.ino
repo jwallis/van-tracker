@@ -242,8 +242,8 @@ int getCurrentHourInt() {
 
 void watchDogForKillSwitch() {
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+
   if (startAttemptedWhileKillSwitchOnVolatile) {
-    
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
@@ -1301,8 +1301,8 @@ void flushFONA() {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void pinSetup() {
-  pinMode(STARTER_INTERRUPT_PIN, INPUT);
-  attachInterrupt(STARTER_INTERRUPT_ID, starterISR, RISING);
+  pinMode(STARTER_INTERRUPT_PIN, INPUT_PULLUP);                 // when starter is on, PIN is LOW
+  attachInterrupt(STARTER_INTERRUPT_ID, starterISR, FALLING);   // when starter is on, PIN is LOW
 
   pinMode(RESET_PIN, OUTPUT);
   digitalWrite(RESET_PIN, HIGH);
@@ -1315,7 +1315,9 @@ void pinSetup() {
 
 void starterISR() {
   _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
-  if (killSwitchOnVolatile && digitalRead(STARTER_INTERRUPT_PIN))
+
+  // when starter is on, PIN is LOW
+  if (killSwitchOnVolatile && !digitalRead(STARTER_INTERRUPT_PIN))
     startAttemptedWhileKillSwitchOnVolatile = true;
 }
 
