@@ -159,7 +159,6 @@ void setup() {
   setupSerial();
   setupFONA();
   waitUntilSMSReady();
-  printFONAType();
 #endif
 }
 
@@ -371,10 +370,10 @@ void handleSMSInput() {
   char smsValue[51];
   int8_t smssFound = 0;
 
-  // the SMS "slots" start at 1, not 0
-  for (int8_t smsSlotNumber = 1; smssFound < numberOfSMSs; smsSlotNumber++) {
+  for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
 
     // This is for handling possible runaway (infinite loop) if sim808 reports there is > 0 SMSs, but when checking individual slots, they all report they're empty
+    // It's someone else's bug (problem anyway) but we have to handle it.  Life is so hard :((
     if (smsSlotNumber == 10)
       break;
 
@@ -1732,22 +1731,6 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   }
 
   handleUnknownReq(smsSender);
-}
-
-void printFONAType() {
-  switch (fona.type()) {
-    case FONA808_V1:
-      debugPrintln(F("FONA 808 (v1)")); break;
-    case FONA808_V2:
-      debugPrintln(F("FONA 808 (v2)")); break;
-    case FONA3G_A:
-      debugPrintln(F("FONA 3G (American)")); break;
-    case FONA3G_E:
-      debugPrintln(F("FONA 3G (European)")); break;
-    default:
-      debugPrintln(F("FOMA ??? Unknown type")); break;
-  }
-  sendRawCommand(F("ATI"));
 }
 
 char readBlocking() {
