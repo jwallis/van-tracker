@@ -1,7 +1,10 @@
 /*
-   Depends on jwallis/Adafruit_FONA
-   Written by Joshua Wallis, borrowing initially from AdaFruit's examples
-   Support AdaFruit, buy their neato products!
+   Written by Joshua Wallis
+   Depends on https://github.com/jwallis/SIM7000-LTE-Shield
+     which depends on https://github.com/botletics/SIM7000-LTE-Shield
+     which depends on https://github.com/adafruit/Adafruit_FONA
+   Support https://www.adafruit.com  and buy their neato products!
+   Support https://www.botletics.com and buy their neato products!
 */
 
 /*
@@ -1339,6 +1342,9 @@ void setupSerial() {
 #endif
 
 void setupFONA() {
+  // let FONA module start up before we try to connect
+  delay(10000);
+
 #ifdef ADAFRUIT_FONA_SHIELD
   fonaSerial->begin(4800);
 #endif
