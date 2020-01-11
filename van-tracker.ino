@@ -36,7 +36,7 @@ Blink debug codes - the Arduino Nono will blink these codes during operation:
 Basic info codes (0 longs followed by THIS MANY shorts):
   1 = about to check inbound SMSs
   2 = about to execute watchdog processes
-  5 = connected to FONA successfully at startup
+  5 = connected to SimCom successfully at startup
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = failed  sending SMS
@@ -51,7 +51,7 @@ Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, ev
   10 = success turning off GPS
 
 Error codes causing restart (2 longs followed by THIS MANY shorts):
-  1 = in setupFONA(): "Couldn't find FONA, restarting."
+  1 = in setupSimCom(): "Couldn't find SimCom, restarting."
   2 = in waitUntilSMSReady(): "SMS never became ready, restarting."
   3 = failed in getTime()
   4 = failed in checkSMSInput()
@@ -68,12 +68,12 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 
 #define VAN_PROD
 //#define VAN_TEST
-//#define NEW_HARDWARE_ONLY  // Initializes new FONA/SIM808 module as well as new arduino's EEPROM
+//#define NEW_HARDWARE_ONLY  // Initializes new sim7000 module as well as new arduino's EEPROM
 
 #define BOARD_UNO_NANO
 //#define BOARD_MEGA
 
-#define AND_TECH_SIM808_BREAKOUT
+#define AND_TECH_SIM7000_BREAKOUT
 //#define ADAFRUIT_FONA_SHIELD
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -91,13 +91,13 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 
 #define STARTER_INTERRUPT_ID 0   // interrupt 0 == pin 2.  I hate that.
 #define STARTER_INTERRUPT_PIN 2  // interrupt 0 == pin 2.  I hate that.
-#define FONA_RX_PIN 3
+#define SIMCOM_RX_PIN 3
 
 #ifdef BOARD_UNO_NANO
-#define FONA_TX_PIN 4
+#define SIMCOM_TX_PIN 4
 #endif
 #ifdef BOARD_MEGA
-#define FONA_TX_PIN 11
+#define SIMCOM_TX_PIN 11
 #endif
 
 #define KILL_SWITCH_RELAY_PIN 5
@@ -106,9 +106,8 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 #define RESET_PIN 8
 #define DEBUG_PIN 13
 
-SoftwareSerial fonaSS = SoftwareSerial(FONA_TX_PIN, FONA_RX_PIN);
-SoftwareSerial *fonaSerial = &fonaSS;
-//HardwareSerial *fonaSerial = &Serial;
+SoftwareSerial SimComSS = SoftwareSerial(SIMCOM_TX_PIN, SIMCOM_RX_PIN);
+SoftwareSerial *SimComSerial = &SimComSS;
 
 Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
 
@@ -146,21 +145,21 @@ volatile bool startAttemptedWhileKillSwitchOnVolatile = false;
 void setup() {
 #ifdef VAN_PROD
   pinSetup();
-  setupFONA();
+  setupSimCom();
   waitUntilSMSReady();
 #endif
   
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
-  setupFONA();
+  setupSimCom();
   initEEPROM();
-  initFONA();
+  initSimCom();
 #endif
 
 #ifdef VAN_TEST
   pinSetup();
   setupSerial();
-  setupFONA();
+  setupSimCom();
   waitUntilSMSReady();
 #endif
 }
@@ -168,7 +167,7 @@ void setup() {
 void loop() {
 #ifdef VAN_TEST
   checkSerialInput();
-  flushFONA();
+  flushSimCom();
 #endif
 
   checkSMSInput();
@@ -206,13 +205,13 @@ void watchDogForTurnOffGPS() {
 
   // case 1 example: lastQuery = 5:10pm, current = 5:20pm
   if (lastGPSQueryMinute <= currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 10) {
-      setFONAGPS(false);
+      setGPS(false);
       lastGPSQueryMinute = -1;
   }
 
   // case 2 example: lastQuery = 5:55, current = 6:05pm
   if (lastGPSQueryMinute > currentMinuteInt && lastGPSQueryMinute - currentMinuteInt < 50) {
-      setFONAGPS(false);
+      setGPS(false);
       lastGPSQueryMinute = -1;
   }
 }
@@ -375,7 +374,7 @@ void handleSMSInput() {
 
   for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
 
-    // This is for handling possible runaway (infinite loop) if sim808 reports there is > 0 SMSs, but when checking individual slots, they all report they're empty
+    // This is for handling possible runaway (infinite loop) if sim7000 module reports there is > 0 SMSs, but when checking individual slots, they all report they're empty
     // It's someone else's bug (problem anyway) but we have to handle it.  Life is so hard :((
     if (smsSlotNumber == 10)
       break;
@@ -890,8 +889,8 @@ void getBatteryStats(char* batteryStats) {
 ////////////////////////////////
 //GPS
 
-void setFONAGPS(bool tf) {
-  // turns FONA GPS on or off (don't waste power)
+void setGPS(bool tf) {
+  // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
     fona.enableGPS(false);
 
@@ -971,7 +970,7 @@ void setFONAGPS(bool tf) {
 void getGPSLatLon(char* latitude, char* longitude) {
   char gpsString[120];
 
-  setFONAGPS(true);
+  setGPS(true);
   fona.getGPS(0, gpsString, 120);
   lastGPSQueryMinute = getCurrentMinuteInt();
 
@@ -1147,7 +1146,7 @@ void reportAndRestart(short shortBlinks, char* message) {
 }
 
 void restartSystem() {
-  // reset sim808.  From the sim808 HW manual:
+  // reset sim7000 module.  From the sim808 HW manual (assumably the same for sim7000):
   //    Normal power off by sending the AT command “AT+CPOWD=1” or using the PWRKEY.
   //    The power management unit shuts down the power supply for the baseband part of the
   //    module, and only the power supply for the RTC is remained. Software is not active. The
@@ -1181,7 +1180,7 @@ void sendRawCommand(const __FlashStringHelper* command) {
   delay(1000);
 
   if (fona.available()) {
-    flushFONA();
+    flushSimCom();
   }
   delay(1000);
 }
@@ -1292,7 +1291,7 @@ void flushSerial() {
     Serial.read();
 }
 
-void flushFONA() {
+void flushSimCom() {
   while (fona.available())
     Serial.write(fona.read());
 }
@@ -1341,23 +1340,23 @@ void setupSerial() {
 }
 #endif
 
-void setupFONA() {
-  // let FONA module start up before we try to connect
+void setupSimCom() {
+  // let SimCom module start up before we try to connect
   delay(10000);
 
 #ifdef ADAFRUIT_FONA_SHIELD
-  fonaSerial->begin(4800);
+  SimComSerial->begin(4800);
 #endif
-#ifdef AND_TECH_SIM808_BREAKOUT
-  fonaSerial->begin(9600);
+#ifdef AND_TECH_SIM7000_BREAKOUT
+  SimComSerial->begin(9600);
 #endif
 
   // TBD make this loop for up to 90s
-  if (! fona.begin(*fonaSerial)) {
-    reportAndRestart(1, F("Couldn't find FONA, restarting."));
+  if (! fona.begin(*SimComSerial)) {
+    reportAndRestart(1, F("Couldn't find SimCom, restarting."));
   }
   debugBlink(0,5);
-  debugPrintln(F("FONA is OK"));
+  debugPrintln(F("SimCom is OK"));
 }
 
 void waitUntilSMSReady() {
@@ -1376,7 +1375,7 @@ void waitUntilSMSReady() {
 
 #ifdef NEW_HARDWARE_ONLY
 void initEEPROM() {
-  // used on brand-new FONA module
+  // used on brand-new Arduino Nano
   debugPrintln(F("Begin initEEPROM()"));
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "52.4322115");
@@ -1394,9 +1393,9 @@ void initEEPROM() {
   debugPrintln(F("End initEEPROM()"));
 }
 
-void initFONA() {
-  // used on brand-new FONA module
-  debugPrintln(F("Begin initFONA()"));
+void initSimCom() {
+  // used on brand-new SimCom module
+  debugPrintln(F("Begin initSimCom()"));
   sendRawCommand(F("ATZ"));                 // Reset settings
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
   sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
@@ -1406,7 +1405,7 @@ void initFONA() {
 
   sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
   sendRawCommand(F("AT&W"));                // save writeable settings
-  debugPrintln(F("End initFONA().\n\nPlease update #ifdefs and restart."));
+  debugPrintln(F("End initSimCom().\n\nPlease update #ifdefs and restart."));
   while (1) {}
 }
 #endif
@@ -1555,14 +1554,6 @@ void handleSerialInput(String command) {
         watchDog();
   }
 
-  if (strcmp(temp, "b") == 0) {
-        uint16_t vbat;
-        fona.getBattVoltage(&vbat);
-        debugPrintln(vbat);
-        fona.getBattPercent(&vbat);
-        debugPrintln(vbat);
-  }
-
 // for SERIAL TUBE:
 
 // AT+CGNSPWR=1 - turn on gps
@@ -1699,7 +1690,7 @@ void handleSerialInput(String command) {
   }
 
   flushSerial();
-  flushFONA();
+  flushSimCom();
 }
 
 void testHandleSMSInput(char* smsSender, char* smsValue) {
