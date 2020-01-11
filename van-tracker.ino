@@ -103,13 +103,12 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 #define KILL_SWITCH_RELAY_PIN 5
 #define KILL_SWITCH_LED_PIN 6
 #define GEOFENCE_LED_PIN 7
-#define RESET_PIN 8
 #define DEBUG_PIN 13
 
 SoftwareSerial SimComSS = SoftwareSerial(SIMCOM_TX_PIN, SIMCOM_RX_PIN);
 SoftwareSerial *SimComSerial = &SimComSS;
 
-Adafruit_FONA fona = Adafruit_FONA(RESET_PIN);    //Adafruit_FONA_3G fona = Adafruit_FONA_3G(FONA_RST);
+Adafruit_FONA fona = Adafruit_FONA_LTE();
 
 #define GEOFENCEENABLED_BOOL_1            0
 #define GEOFENCEHOMELAT_CHAR_12           1
@@ -1304,9 +1303,6 @@ void flushSimCom() {
 void pinSetup() {
   pinMode(STARTER_INTERRUPT_PIN, INPUT_PULLUP);                 // when starter is on, PIN is LOW
   attachInterrupt(STARTER_INTERRUPT_ID, starterISR, FALLING);   // when starter is on, PIN is LOW
-
-  pinMode(RESET_PIN, OUTPUT);
-  digitalWrite(RESET_PIN, HIGH);
   
   pinMode(GEOFENCE_LED_PIN, OUTPUT);
   pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
