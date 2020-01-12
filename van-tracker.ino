@@ -108,7 +108,7 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 SoftwareSerial SimComSS = SoftwareSerial(SIMCOM_TX_PIN, SIMCOM_RX_PIN);
 SoftwareSerial *SimComSerial = &SimComSS;
 
-Adafruit_FONA fona = Adafruit_FONA_LTE();
+Adafruit_FONA fona = Adafruit_FONA(99);
 
 #define GEOFENCEENABLED_BOOL_1            0
 #define GEOFENCEHOMELAT_CHAR_12           1
@@ -536,7 +536,7 @@ bool handleLockReq(char* smsSender) {
   char message[120];
 
   // send SMS with new geofence home
-  strcpy(message, "Lockdown: Enabled (all settings saved)\nRadius: ");
+  strcpy(message, "Lockdown: Enabled\nRadius: ");
   strcat(message, geofenceRadius);
   strcat(message, " feet\nHome: google.com/search?q=");
   strcat(message, geofenceHomeLat);
@@ -583,7 +583,7 @@ bool handleUnlockReq(char* smsSender) {
   char message[100];
 
   // send SMS with original geofenceHome
-  strcpy(message, "Lockdown: Disabled (all settings restored)\nHome: google.com/search?q=");
+  strcpy(message, "Lockdown: Disabled (previous settings restored)\nHome: google.com/search?q=");
   strcat(message, geofenceHomeLat);
   strcat(message, ",");
   strcat(message, geofenceHomeLon);
@@ -863,27 +863,6 @@ void getSMSValue(int8_t smsSlotNumber, char* smsValue) {
 //BUSINESS FUNCTIONS
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////
-//BATTERY
-
-void getBatteryStats(char* batteryStats) {
-  uint16_t batteryVolts;
-  uint16_t batteryPercent;
-
-  for (int i = 0; i < 3; i++) {
-    if (fona.getBattVoltage(&batteryVolts))
-      break;
-    delay(1000);
-  }
-
-  for (int i = 0; i < 3; i++) {
-    if (fona.getBattPercent(&batteryPercent))
-      break;
-    delay(1000);
-  }
-
-  sprintf(batteryStats, "%u%% %umV", batteryPercent, batteryVolts);
-}
 
 ////////////////////////////////
 //GPS
@@ -1332,7 +1311,7 @@ void setGeofencePins(bool tf) {
 void setupSerial() {
   while (!Serial);
   Serial.begin(115200);
-  Serial.println(F("Initializing....(May take 3 seconds)"));
+  Serial.println(F("Connect SimCom-"));
 }
 #endif
 
@@ -1349,24 +1328,24 @@ void setupSimCom() {
 
   // TBD make this loop for up to 90s
   if (! fona.begin(*SimComSerial)) {
-    reportAndRestart(1, F("Couldn't find SimCom, restarting."));
+    reportAndRestart(1, F("Couldn't find SimCom, restarting"));
   }
   debugBlink(0,5);
-  debugPrintln(F("SimCom is OK"));
+  debugPrintln(F("SimCom OK"));
 }
 
 void waitUntilSMSReady() {
-  debugPrint(F("Waiting until SMS is ready"));
+  debugPrint(F("Connect to SimCom SMS"));
   
   for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
-      debugPrintln(F("\nSMS is ready"));
+      debugPrintln(F("\nSMS OK"));
       return;
     }
     delay(2000);
   }
-  reportAndRestart(2, F("SMS never became ready, restarting."));
+  reportAndRestart(2, F("SimCom SMS failed, restarting"));
 }
 
 #ifdef NEW_HARDWARE_ONLY
@@ -1562,8 +1541,9 @@ void handleSerialInput(String command) {
 // AT+CCLK? - get clock
 // AT+CPOWD=1 - power down module
 
+  // Allow user to directly enter serial commands to the SimCom chip
   if (strcmp(temp, "S") == 0) {
-    debugPrintln(F("Creating SERIAL TUBE"));
+    debugPrintln(F("Serial:"));
     while (1) {
       while (Serial.available()) {
         delay(1);
@@ -1667,16 +1647,18 @@ void handleSerialInput(String command) {
     //
   if (strcmp(temp, "d") == 0) {
     for (int i = 2; i < 10; i++) {
-      debugPrintln(F("  Attempting to delete SMS"));
+      debugPrintln(F("  Delete SMS:"));
       if (fona.deleteSMS(readnumber())) {
-        debugPrintln(F("  Success deleting SMS"));
+        debugPrintln(F("  Success"));
         return;
       }
       delay(i * 1000);
     }
-    debugPrintln(F("  Failed to delete SMS"));
+    debugPrintln(F("  Failed"));
   }
 
+  // Test incoming SMS, for example:
+  // 5554443333_fence info
   if (command.length() > 2){
     char smsSender[16];
     char smsValue[51];
@@ -1693,7 +1675,7 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
   toLower(smsValue);
 
-  debugPrintln(F("--read SMS--"));
+  debugPrintln(F("-read SMS-"));
   debugPrintln(smsSender);
   debugPrintln(smsValue);
   debugPrintln(F(""));
