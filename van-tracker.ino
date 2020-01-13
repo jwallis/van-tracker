@@ -134,7 +134,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define KILLSWITCHEND_CHAR_SAVED_3        104
 
 short totalErrors = 0;
-short lastError = 0;
+char lastError[2] = "0";
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
@@ -187,8 +187,9 @@ void watchDogForErrors() {
   if (totalErrors > 2) {
     totalErrors = 0;
     char message[30];
-    sprintf(message, "Restarting. Error code: %d", lastError); 
-    reportAndRestart(lastError, message);
+    strcpy_P(message, PSTR("Restarting. Error code: "));
+    strcat(message, lastError); 
+    reportAndRestart(atoi(lastError), message);
   }
 }
 
@@ -361,7 +362,7 @@ void checkSMSInput() {
   }
   debugPrintln(F("failure in checkSMSInput()"));
   totalErrors++;
-  lastError = 4;
+  lastError[0] = '4';
 }
 
 void handleSMSInput() {
@@ -924,7 +925,7 @@ void setGPS(bool tf) {
   // error, give up
   if (fona.GPSstatus() < 0) {
     totalErrors++;
-    lastError = 5;
+    lastError[0] = '5';
     debugPrintln(F("Failed to turn on GPS"));
     debugBlink(1,5);
     return;
@@ -957,7 +958,7 @@ void setGPS(bool tf) {
   // no fix, give up
   if (fona.GPSstatus() < 2) {
     totalErrors++;
-    lastError = 6;
+    lastError[0] = '6';
     debugPrintln(F("Failed to get GPS fix"));
     debugBlink(1,7);
     return;
@@ -999,7 +1000,7 @@ void getTime(char* currentTimeStr) {
   // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
   if (!currentTimeStr[0] == '"') {
     totalErrors++;
-    lastError = 3;
+    lastError[0] = '3';
   }
 }
 
@@ -1019,7 +1020,7 @@ void deleteSMS(uint8_t msg_number) {
   debugPrintln(F("  Failed to delete SMS"));
   debugBlink(1,3);
   totalErrors++;
-  lastError = 7;
+  lastError[0] = '7';
 }
 
 bool sendSMS(char* send_to, char* message) {
