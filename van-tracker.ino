@@ -1150,7 +1150,7 @@ void restartSystem() {
   //    module, and only the power supply for the RTC is remained. Software is not active. The
   //    serial port is not accessible. Power supply (connected to VBAT) remains applied.
   sendRawCommand(F("AT+CPOWD=1"));
-  delay(45000);
+  delay(15000);
 
   // reset arduino
   wdt_disable();
@@ -1337,7 +1337,7 @@ void setupSerial() {
 
 void setupSimCom() {
   // let SimCom module start up before we try to connect
-  delay(10000);
+  delay(5000);
 
 #ifdef ADAFRUIT_FONA_SHIELD
   SimComSerial->begin(4800);
@@ -1563,6 +1563,10 @@ void handleSerialInput(String command) {
 
   // Allow user to directly enter serial commands to the SimCom chip
   if (strcmp_P(temp, PSTR("S")) == 0) {
+    sendRawCommand(F("AT+CMEE=2"));
+    sendRawCommand(F("ATE1"));
+    delay(2000);    
+
     debugPrintln(F("Serial:"));
     while (1) {
       while (Serial.available()) {
@@ -1591,45 +1595,43 @@ void handleSerialInput(String command) {
     //
     //    /*** SMS ***/
     //
-    //    case 'N': {
-    //        // read the number of SMS's!
-    //        int8_t smsnum = fona.getNumSMS();
-    //        if (smsnum < 0) {
-    //          debugPrintln(F("Could not read # SMS"));
-    //        } else {
-    //          Serial.print(smsnum);
-    //          debugPrintln(F(" SMS's on SIM card!"));
-    //        }
-    //        break;
-    //      }
-    //    case 'r': {
-    //        // read an SMS
-    //        flushSerial();
-    //        Serial.print(F("Read #"));
-    //        uint8_t smsn = readnumber();
-    //        Serial.print(F("\n\rReading SMS #")); debugPrintln(smsn);
-    //
-    //
-    //        // Retrieve SMS sender address/phone number.
-    //        if (! fona.getSMSSender(smsn, replybuffer, 250)) {
-    //          debugPrintln("Failed!");
-    //          break;
-    //        }
-    //        Serial.print(F("FROM: ")); debugPrintln(replybuffer);
-    //
-    //        // Retrieve SMS value.
-    //        uint16_t smslen;
-    //        if (! fona.readSMS(smsn, replybuffer, 250, &smslen)) { // pass in buffer and max len!
-    //          debugPrintln("Failed!");
-    //          break;
-    //        }
-    //        Serial.print(F("***** SMS #")); Serial.print(smsn);
-    //        Serial.print(" ("); Serial.print(smslen); debugPrintln(F(") bytes *****"));
-    //        debugPrintln(replybuffer);
-    //        debugPrintln(F("*****"));
-    //
-    //        break;
-    //      }
+    //  if (strcmp_P(temp, PSTR("n")) == 0) {
+    //            // read the number of SMS's!
+    //  
+    //            int8_t smsnum = fona.getNumSMS();
+    //            if (smsnum < 0) {
+    //              debugPrintln(F("Could not read # SMS"));
+    //            } else {
+    //              Serial.print(smsnum);
+    //              debugPrintln(F(" SMS's on SIM card!"));
+    //            }
+    //          }
+    //  if (strcmp_P(temp, PSTR("r")) == 0) {
+    //            // read an SMS
+    //            flushSerial();
+    //            Serial.print(F("Read #"));
+    //            uint8_t smsn = readnumber();
+    //    
+    //    
+    //            // Retrieve SMS sender address/phone number.
+    //            if (! fona.getSMSSender(smsn, replybuffer, 250)) {
+    //              debugPrintln("Failed!");
+    //              break;
+    //            }
+    //            Serial.print("FROM: "); debugPrintln(replybuffer);
+    //    
+    //            // Retrieve SMS value.
+    //            uint16_t smslen;
+    //            if (! fona.readSMS(smsn, replybuffer, 250, &smslen)) { // pass in buffer and max len!
+    //              debugPrintln("Failed!");
+    //              break;
+    //            }
+    //            Serial.print(F("***** SMS #")); Serial.print(smsn);
+    //            Serial.print(" ("); Serial.print(smslen); debugPrintln(F(") bytes *****"));
+    //            debugPrintln(replybuffer);
+    //            debugPrintln(F("*****"));
+    //    
+    //          }
     //    case 'R': {
     //        // read all SMS
     //        int8_t smsnum = fona.getNumSMS();
