@@ -134,7 +134,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define KILLSWITCHEND_CHAR_SAVED_3        104
 
 short totalErrors = 0;
-short lastError = 0;
+char lastError[2] = "0";
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
@@ -187,8 +187,9 @@ void watchDogForErrors() {
   if (totalErrors > 2) {
     totalErrors = 0;
     char message[30];
-    sprintf(message, "Restarting. Error code: %d", lastError); 
-    reportAndRestart(lastError, message);
+    strcpy_P(message, PSTR("Restarting. Error code: "));
+    strcat(message, lastError); 
+    reportAndRestart(atoi(lastError), message);
   }
 }
 
@@ -318,23 +319,23 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   char message[139];      // SMS max len = 140
 
   if (follow)
-    strcpy(message, "FOLLOW MODE");
+    strcpy_P(message, PSTR("FOLLOW MODE"));
   else
-    strcpy(message, "GEOFENCE WARNING!");
+    strcpy_P(message, PSTR("GEOFENCE WARNING!"));
 
-  strcat(message, "\nCurrent:\ngoogle.com/search?q=");
+  strcat_P(message, PSTR("\nCurrent:\ngoogle.com/search?q="));
   strcat(message, currentLat);
-  strcat(message, ",");
+  strcat_P(message, PSTR(","));
   strcat(message, currentLon);
-  strcat(message, "\nHome:\ngoogle.com/search?q=");
+  strcat_P(message, PSTR("\nHome:\ngoogle.com/search?q="));
   strcat(message, geofenceHomeLat);
-  strcat(message, ",");
+  strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use 'follow enable' to receive rapid location updates"));
+    sendSMS(ownerPhoneNumber, F("Use \"follow enable\" to receive rapid location updates"));
   }
 
   lastGeofenceWarningMinute = getCurrentMinuteInt();
@@ -361,7 +362,7 @@ void checkSMSInput() {
   }
   debugPrintln(F("failure in checkSMSInput()"));
   totalErrors++;
-  lastError = 4;
+  lastError[0] = '4';
 }
 
 void handleSMSInput() {
@@ -392,7 +393,7 @@ void handleSMSInput() {
     debugPrintln(smsSender);
     debugPrintln(smsValue);
 
-    if (strstr(smsValue, "unlock")) {
+    if (strstr_P(smsValue, PSTR("unlock"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -401,7 +402,7 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr(smsValue, "lock")) {
+    if (strstr_P(smsValue, PSTR("lock"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -410,13 +411,13 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr(smsValue, "loc")) {
+    if (strstr_P(smsValue, PSTR("loc"))) {
       if (handleLocReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
-    if (strstr(smsValue, "kill")) {
+    if (strstr_P(smsValue, PSTR("kill"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -425,7 +426,7 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr(smsValue, "fence")) {
+    if (strstr_P(smsValue, PSTR("fence"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -434,19 +435,19 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr(smsValue, "follow")) {
+    if (strstr_P(smsValue, PSTR("follow"))) {
       if (handleFollowReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
-    if (strstr(smsValue, "owner")) {
+    if (strstr_P(smsValue, PSTR("owner"))) {
       if (handleOwnerPhoneNumberReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
-    if (strstr(smsValue, "info")) {
+    if (strstr_P(smsValue, PSTR("info"))) {
       if (handleInfoReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
@@ -463,19 +464,19 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
 
   if (lockdownEnabled) {
-    if (strstr(smsValue, "kill") || strstr(smsValue, "fence")) {
+    if (strstr_P(smsValue, PSTR("kill")) || strstr_P(smsValue, PSTR("fence"))) {
       if (sendSMS(smsSender, F("Warning: Lockdown Enabled\nTry \"unlock\" before trying to modify fence or kill")))
         deleteSMS(smsSlotNumber);
       return true;
     }
-    if (strstr(smsValue, "lock") && !strstr(smsValue, "unlock")) {
+    if (strstr_P(smsValue, PSTR("lock")) && !strstr_P(smsValue, PSTR("unlock"))) {
       if (sendSMS(smsSender, F("Lockdown already enabled")))
         deleteSMS(smsSlotNumber);
       return true;
     }
   }
   else {
-    if (strstr(smsValue, "unlock")) {
+    if (strstr_P(smsValue, PSTR("unlock"))) {
       if (sendSMS(smsSender, F("Lockdown already disabled")))
         deleteSMS(smsSlotNumber);
       return true;
@@ -522,7 +523,7 @@ bool handleLockReq(char* smsSender) {
   getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-  strcpy(geofenceRadius, "500");
+  strcpy_P(geofenceRadius, PSTR("500"));
   EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
   EEPROM.put(GEOFENCESTART_CHAR_3, "00");
   EEPROM.put(GEOFENCEEND_CHAR_3, "00");
@@ -536,11 +537,11 @@ bool handleLockReq(char* smsSender) {
   char message[120];
 
   // send SMS with new geofence home
-  strcpy(message, "Lockdown: Enabled\nRadius: ");
+  strcpy_P(message, PSTR("Lockdown: Enabled\nRadius: "));
   strcat(message, geofenceRadius);
-  strcat(message, " feet\nHome: google.com/search?q=");
+  strcat_P(message, PSTR(" feet\nHome: google.com/search?q="));
   strcat(message, geofenceHomeLat);
-  strcat(message, ",");
+  strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
 
   return sendSMS(smsSender, message);
@@ -583,9 +584,9 @@ bool handleUnlockReq(char* smsSender) {
   char message[100];
 
   // send SMS with original geofenceHome
-  strcpy(message, "Lockdown: Disabled (previous settings restored)\nHome: google.com/search?q=");
+  strcpy_P(message, PSTR("Lockdown: Disabled (previous settings restored)\nHome: google.com/search?q="));
   strcat(message, geofenceHomeLat);
-  strcat(message, ",");
+  strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
 
   return sendSMS(smsSender, message);
@@ -593,6 +594,7 @@ bool handleUnlockReq(char* smsSender) {
 
 bool handleInfoReq(char* smsSender) {
   uint8_t rssi;
+  char rssiStr[4];
   char ccid[22];
   char imei[16];
   char currentTimeStr[23];
@@ -606,27 +608,40 @@ bool handleInfoReq(char* smsSender) {
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdown);
   
   if (lockdown)
-    strcpy(lockdownStr, "Enabled");
+    strcpy_P(lockdownStr, PSTR("Enabled"));
   else
-    strcpy(lockdownStr, "Disabled");
+    strcpy_P(lockdownStr, PSTR("Disabled"));
 
   bool follow;
   char followStr[9];
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
   
   if (follow)
-    strcpy(followStr, "Enabled");
+    strcpy_P(followStr, PSTR("Enabled"));
   else
-    strcpy(followStr, "Disabled");
+    strcpy_P(followStr, PSTR("Disabled"));
 
   rssi = fona.getRSSI();
+  itoa(rssi, rssiStr, 10);
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
 
   getTime(currentTimeStr);
 
-
-  sprintf(message, "Owner: %s\nLockdown: %s\nFollow: %s\nRSSI: %u\nCCID: %s\nIMEI: %s\nNetwork Time: %s", ownerPhoneNumber, lockdownStr, followStr, rssi, ccid, imei, currentTimeStr);
+  strcpy_P(message, PSTR("Owner: "));
+  strcat(message, ownerPhoneNumber);
+  strcat_P(message, PSTR("\nLockdown: "));
+  strcat(message, lockdownStr);
+  strcat_P(message, PSTR("\nFollow: "));
+  strcat(message, followStr);
+  strcat_P(message, PSTR("\nRSSI: "));
+  strcat(message, rssiStr);
+  strcat_P(message, PSTR("\nCCID: "));
+  strcat(message, ccid);
+  strcat_P(message, PSTR("\nIMEI: "));
+  strcat(message, imei);
+  strcat_P(message, PSTR("\nNetwork Time: "));
+  strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
 }
 
@@ -637,16 +652,19 @@ bool handleLocReq(char* smsSender) {
 
   getGPSLatLon(latitude, longitude);
 
-  sprintf(message, "google.com/search?q=%s,%s", latitude, longitude);
+  strcpy_P(message, PSTR("google.com/search?q="));
+  strcat(message, latitude);
+  strcat_P(message, PSTR(","));
+  strcat(message, longitude);
   return sendSMS(smsSender, message);
 }
 
 bool handleFollowReq(char* smsSender, char* smsValue) {
-  if (strstr(smsValue, "enable") ) {
+  if (strstr_P(smsValue, PSTR("enable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
     return sendSMS(smsSender, F("Follow: ENABLED"));
   }
-  if (strstr(smsValue, "disable") ) {
+  if (strstr_P(smsValue, PSTR("disable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
     return sendSMS(smsSender, F("Follow: DISABLED"));
   }
@@ -662,18 +680,18 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
   EEPROM.get(KILLSWITCHSTART_CHAR_3, killSwitchStart);
   EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
 
-  if (strstr(smsValue, "enable") ) {
+  if (strstr_P(smsValue, PSTR("enable"))) {
     EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
     message[0] = '1';
   }
-  if (strstr(smsValue, "disable") ) {
+  if (strstr_P(smsValue, PSTR("disable"))) {
     EEPROM.put(KILLSWITCHENABLED_BOOL_1, false);
     message[0] = '1';
   }
 
   EEPROM.get(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
 
-  if (strstr(smsValue, "hours")) {
+  if (strstr_P(smsValue, PSTR("hours"))) {
     if (setHoursFromSMS(smsValue, killSwitchStart, killSwitchEnd)) {
       // make 4 => 04
       insertZero(killSwitchStart);
@@ -685,20 +703,20 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
     }
   }
 
-  if (message[0] || strstr(smsValue, "info")) {
+  if (message[0] || strstr_P(smsValue, PSTR("info"))) {
     //  Yay only 2k of RAM
-    strcpy(message, "Kill: ");
+    strcpy_P(message, PSTR("Kill: "));
     if (killSwitchEnabled)
-      strcat(message, "En");
+      strcat_P(message, PSTR("En"));
     else
-      strcat(message, "Dis");
+      strcat_P(message, PSTR("Dis"));
 
-    strcat(message, "abled\nHours: ");
+    strcat_P(message, PSTR("abled\nHours: "));
     strcat(message, killSwitchStart);
-    strcat(message, "-");
+    strcat_P(message, PSTR("-"));
     strcat(message, killSwitchEnd);
     if (strcmp(killSwitchStart, killSwitchEnd) == 0) {  // if start time == end time  
-      strcat(message, " (always on)");
+      strcat_P(message, PSTR(" (always on)"));
     }
 
     return sendSMS(smsSender, message);
@@ -724,31 +742,31 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
 
 
-  if (strstr(smsValue, "enable") ) {
+  if (strstr_P(smsValue, PSTR("enable"))) {
     EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
     message[0] = '1';
   }
-  if (strstr(smsValue, "disable") ) {
+  if (strstr_P(smsValue, PSTR("disable"))) {
     EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
     message[0] = '1';
   }
   
   EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
   
-  if (strstr(smsValue, "radius")) {
+  if (strstr_P(smsValue, PSTR("radius"))) {
     geofenceRadius[0] = '\0';
     if (getNumberFromString(smsValue, geofenceRadius, 7)) {
       EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
       message[0] = '1';
     }
   }
-  if (strstr(smsValue, "home")) {
+  if (strstr_P(smsValue, PSTR("home"))) {
     getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     message[0] = '1';
   }
-  if (strstr(smsValue, "hours")) {
+  if (strstr_P(smsValue, PSTR("hours"))) {
     if (setHoursFromSMS(smsValue, geofenceStart, geofenceEnd)) {
       // make 4 => 04
       insertZero(geofenceStart);
@@ -763,31 +781,31 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
   // reset this so the "follow" message will be sent when the fence is broken
   lastGeofenceWarningMinute = -1;
 
-  if (message[0] || strstr(smsValue, "info")) {
+  if (message[0] || strstr_P(smsValue, PSTR("info"))) {
     //    Yay only 2k of RAM, doing this all piecemeal (instead of big strings as is done in this comment) saves 54 bytes!!!!!!!
     //    if (geofenceEnabled)
     //      sprintf(message, "ENABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
     //    else
     //      sprintf(message, "DISABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
 
-    strcpy(message, "Fence: ");
+    strcpy_P(message, PSTR("Fence: "));
     if (geofenceEnabled)
-      strcat(message, "En");
+      strcat_P(message, PSTR("En"));
     else
-      strcat(message, "Dis");
+      strcat_P(message, PSTR("Dis"));
 
-    strcat(message, "abled\nHours: ");
+    strcat_P(message, PSTR("abled\nHours: "));
     strcat(message, geofenceStart);
-    strcat(message, "-");
+    strcat_P(message, PSTR("-"));
     strcat(message, geofenceEnd);
     if (strcmp(geofenceStart, geofenceEnd) == 0) {  // if start time == end time  
-      strcat(message, " (always on)");
+      strcat_P(message, PSTR(" (always on)"));
     }
-    strcat(message, "\nRadius: ");
+    strcat_P(message, PSTR("\nRadius: "));
     strcat(message, geofenceRadius);
-    strcat(message, " feet\nHome: google.com/search?q=");
+    strcat_P(message, PSTR(" feet\nHome: google.com/search?q="));
     strcat(message, geofenceHomeLat);
-    strcat(message, ",");
+    strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
 
     return sendSMS(smsSender, message);
@@ -802,7 +820,7 @@ bool handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
   char ownerPhoneNumber[15] = "";
 
   // set owner number
-  if (strstr(smsValue, "set")) {
+  if (strstr_P(smsValue, PSTR("set"))) {
     getNumberFromString(smsValue, ownerPhoneNumber, 15);
 
     // if "set" was found but no number was found, use the number of the person who sent the text
@@ -810,14 +828,16 @@ bool handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
       getNumberFromString(smsSender, ownerPhoneNumber, 15);
     }
 
-    sprintf(message, "Setting owner phone # to %s", ownerPhoneNumber);
+    strcpy_P(message, PSTR("Setting owner phone # to "));
+    strcat(message, ownerPhoneNumber);
     EEPROM.put(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
   }
 
   // just respond with current owner number
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    sprintf(message, "%s\nTry \"owner\" plus:\nset (include number or blank for YOUR number)", ownerPhoneNumber);
+    strcpy(message, ownerPhoneNumber);
+    strcat_P(message, PSTR("\nTry \"owner\" plus:\nset (include number or blank for YOUR number)"));
   }
 
   return sendSMS(smsSender, message);
@@ -905,7 +925,7 @@ void setGPS(bool tf) {
   // error, give up
   if (fona.GPSstatus() < 0) {
     totalErrors++;
-    lastError = 5;
+    lastError[0] = '5';
     debugPrintln(F("Failed to turn on GPS"));
     debugBlink(1,5);
     return;
@@ -938,7 +958,7 @@ void setGPS(bool tf) {
   // no fix, give up
   if (fona.GPSstatus() < 2) {
     totalErrors++;
-    lastError = 6;
+    lastError[0] = '6';
     debugPrintln(F("Failed to get GPS fix"));
     debugBlink(1,7);
     return;
@@ -958,10 +978,10 @@ void getGPSLatLon(char* latitude, char* longitude) {
   getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
 
 #ifdef VAN_TEST
-  char message[70];
-  strcpy(message, "google.com/search?q=");
+  char message[46];
+  strcpy_P(message, PSTR("google.com/search?q="));
   strcat(message, latitude);
-  strcat(message, ",");
+  strcat_P(message, PSTR(","));
   strcat(message, longitude);
   debugPrintln(message);
 #endif
@@ -980,7 +1000,7 @@ void getTime(char* currentTimeStr) {
   // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
   if (!currentTimeStr[0] == '"') {
     totalErrors++;
-    lastError = 3;
+    lastError[0] = '3';
   }
 }
 
@@ -1000,7 +1020,7 @@ void deleteSMS(uint8_t msg_number) {
   debugPrintln(F("  Failed to delete SMS"));
   debugBlink(1,3);
   totalErrors++;
-  lastError = 7;
+  lastError[0] = '7';
 }
 
 bool sendSMS(char* send_to, char* message) {
@@ -1519,13 +1539,13 @@ void handleSerialInput(String command) {
   command.trim();
   char* temp = command.c_str();
 
-  if (strcmp(temp, "g") == 0) {
+  if (strcmp_P(temp, PSTR("g")) == 0) {
         getEEPROM();
   }
-  if (strcmp(temp, "p") == 0) {
+  if (strcmp_P(temp, PSTR("p")) == 0) {
         putEEPROM();
   }
-  if (strcmp(temp, "w") == 0) {
+  if (strcmp_P(temp, PSTR("w")) == 0) {
         watchDog();
   }
 
@@ -1542,7 +1562,7 @@ void handleSerialInput(String command) {
 // AT+CPOWD=1 - power down module
 
   // Allow user to directly enter serial commands to the SimCom chip
-  if (strcmp(temp, "S") == 0) {
+  if (strcmp_P(temp, PSTR("S")) == 0) {
     debugPrintln(F("Serial:"));
     while (1) {
       while (Serial.available()) {
@@ -1645,7 +1665,7 @@ void handleSerialInput(String command) {
     //        break;
     //      }
     //
-  if (strcmp(temp, "d") == 0) {
+  if (strcmp_P(temp, PSTR("d")) == 0) {
     for (int i = 2; i < 10; i++) {
       debugPrintln(F("  Delete SMS:"));
       if (fona.deleteSMS(readnumber())) {
@@ -1680,27 +1700,27 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   debugPrintln(smsValue);
   debugPrintln(F(""));
 
-  if (strstr(smsValue, "gps") || strstr(smsValue, "loc")) {
+  if (strstr_P(smsValue, PSTR("gps")) || strstr_P(smsValue, PSTR("loc"))) {
     handleLocReq(smsSender);
     return;
   }
 
-  if (strstr(smsValue, "kill")) {
+  if (strstr_P(smsValue, PSTR("kill"))) {
     handleKillSwitchReq(smsSender, smsValue);
     return;
   }
 
-  if (strstr(smsValue, "fence")) {
+  if (strstr_P(smsValue, PSTR("fence"))) {
     handleGeofenceReq(smsSender, smsValue);
     return;
   }
 
-  if (strstr(smsValue, "owner")) {
+  if (strstr_P(smsValue, PSTR("owner"))) {
     handleOwnerPhoneNumberReq(smsSender, smsValue);
     return;
   }
 
-  if (strstr(smsValue, "info")) {
+  if (strstr_P(smsValue, PSTR("info"))) {
     handleInfoReq(smsSender);
     return;
   }
