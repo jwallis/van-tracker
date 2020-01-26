@@ -62,9 +62,13 @@ Error codes causing restart (2 longs followed by THIS MANY shorts):
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-//    SET HARDWARE OPTIONS
+//    SET NETWORK & HARDWARE OPTIONS
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+#define APN           F("hologram")
+#define SERVER_NAME   "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!
+#define SERVER_PORT   9999
 
 #define VAN_PROD
 //#define VAN_TEST
@@ -133,6 +137,10 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define KILLSWITCHSTART_CHAR_SAVED_3      101
 #define KILLSWITCHEND_CHAR_SAVED_3        104
 
+#define DEVKEY_CHAR_9                     107
+#define SERVERNAME_CHAR_24                116
+#define SERVERPORT_INT_2                  140
+
 short totalErrors = 0;
 char lastError[2] = "0";
 short lastGPSQueryMinute = -1;
@@ -146,6 +154,7 @@ void setup() {
   pinSetup();
   setupSimCom();
   waitUntilSMSReady();
+  waitUntilNetworkConnected();
 #endif
   
 #ifdef NEW_HARDWARE_ONLY
@@ -160,6 +169,7 @@ void setup() {
   setupSerial();
   setupSimCom();
   waitUntilSMSReady();
+  waitUntilNetworkConnected();
 #endif
 }
 
@@ -368,7 +378,7 @@ void checkSMSInput() {
 void handleSMSInput() {
   short numberOfSMSs = fona.getNumSMS();
 
-  char smsSender[16];
+  char smsSender[15];
   char smsValue[51];
   int8_t smssFound = 0;
 
@@ -1331,11 +1341,11 @@ void setGeofencePins(bool tf) {
 void setupSerial() {
   while (!Serial);
   Serial.begin(115200);
-  Serial.println(F("Connect SimCom-"));
 }
 #endif
 
 void setupSimCom() {
+  debugPrintln(F("Connect to SimCom"));
   // let SimCom module start up before we try to connect
   delay(5000);
 
@@ -1348,14 +1358,14 @@ void setupSimCom() {
 
   // TBD make this loop for up to 90s
   if (! fona.begin(*SimComSerial)) {
-    reportAndRestart(1, F("Couldn't find SimCom, restarting"));
+    reportAndRestart(1, F("Connect to SimCom failed, restarting"));
   }
   debugBlink(0,5);
   debugPrintln(F("SimCom OK"));
 }
 
 void waitUntilSMSReady() {
-  debugPrint(F("Connect to SimCom SMS"));
+  debugPrintln(F("Connect to SMS"));
   
   for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
@@ -1365,7 +1375,24 @@ void waitUntilSMSReady() {
     }
     delay(2000);
   }
-  reportAndRestart(2, F("SimCom SMS failed, restarting"));
+  reportAndRestart(2, F("Connect to SMS failed, restarting"));
+}
+
+void waitUntilNetworkConnected() {
+  debugPrintln(F("Connect to network"));
+  int netConn;
+  
+  for (int i = 0; i < 60; i++) {
+    debugPrint(F("."));
+    netConn = fona.getNetworkStatus();
+    if (netConn == 1 || netConn == 5) {
+      debugPrintln(F("\nConnected"));
+      fona.setNetworkSettings(APN, F(""), F(""));
+      return;
+    }
+    delay(2000);
+  }
+  reportAndRestart(2, F("Connect to network failed, restarting"));
 }
 
 #ifdef NEW_HARDWARE_ONLY
@@ -1384,6 +1411,10 @@ void initEEPROM() {
   EEPROM.put(KILLSWITCHEND_CHAR_3, "00");
   EEPROM.put(OWNERPHONENUMBER_CHAR_15, "5551234567");
   EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
+  
+  EEPROM.put(DEVKEY_CHAR_9, "00000000");
+  EEPROM.put(SERVERNAME_CHAR_24, SERVER_NAME);
+  EEPROM.put(SERVERPORT_INT_2, SERVER_PORT);
 
   debugPrintln(F("End initEEPROM()"));
 }
@@ -1488,8 +1519,9 @@ void putEEPROM() {
 
 
 void getEEPROM() {
-  char tempc[13];
+  char tempc[24];
   bool tempb;
+  int tempi;
 
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, tempc);
   Serial.write ("GEOFENCEHOMELAT_CHAR_12: ");
@@ -1520,6 +1552,16 @@ void getEEPROM() {
   debugPrintln(tempc);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, tempc);
   Serial.write ("OWNERPHONENUMBER_CHAR_15: ");
+  debugPrintln(tempc);
+  EEPROM.get(DEVKEY_CHAR_9, tempc);
+  Serial.write ("DEVKEY_CHAR_9: ");
+  debugPrintln(tempc);
+  EEPROM.get(SERVERNAME_CHAR_24, tempc);
+  Serial.write ("SERVERNAME_CHAR_24: ");
+  debugPrintln(tempc);
+  EEPROM.get(SERVERPORT_INT_2, tempi);
+  Serial.write ("SERVERPORT_INT_2: ");
+  itoa(tempi, tempc, 10);
   debugPrintln(tempc);
 }
 
@@ -1682,7 +1724,7 @@ void handleSerialInput(String command) {
   // Test incoming SMS, for example:
   // 5554443333_fence info
   if (command.length() > 2){
-    char smsSender[16];
+    char smsSender[15];
     char smsValue[51];
     getOccurrenceInDelimitedString(temp, smsSender, 1, '_');
     getOccurrenceInDelimitedString(temp, smsValue, 2, '_');
