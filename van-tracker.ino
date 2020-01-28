@@ -490,6 +490,12 @@ void handleSMSInput() {
       continue;
     }
 
+    if (strstr_P(smsValue, PSTR("deleteallmessages"))) {
+      if (handleDeleteAllMessagesReq())
+        deleteSMS(smsSlotNumber);
+      return;
+    }
+
     // default
     if (handleUnknownReq(smsSender))
       deleteSMS(smsSlotNumber);
@@ -649,19 +655,13 @@ bool handleInfoReq(char* smsSender) {
   else
     strcpy_P(lockdownStr, PSTR("Disabled"));
 
-  bool follow;
-  char followStr[9];
-  EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
-  
-  if (follow)
-    strcpy_P(followStr, PSTR("Enabled"));
-  else
-    strcpy_P(followStr, PSTR("Disabled"));
-
   rssi = fona.getRSSI();
   itoa(rssi, rssiStr, 10);
   fona.getSIMCCID(ccid);
   fona.getIMEI(imei);
+
+  char devKey[9];
+  EEPROM.get(DEVKEY_CHAR_9, devKey);
 
   getTime(currentTimeStr);
 
@@ -669,15 +669,15 @@ bool handleInfoReq(char* smsSender) {
   strcat(message, ownerPhoneNumber);
   strcat_P(message, PSTR("\nLockdown: "));
   strcat(message, lockdownStr);
-  strcat_P(message, PSTR("\nFollow: "));
-  strcat(message, followStr);
   strcat_P(message, PSTR("\nRSSI: "));
   strcat(message, rssiStr);
   strcat_P(message, PSTR("\nCCID: "));
   strcat(message, ccid);
   strcat_P(message, PSTR("\nIMEI: "));
   strcat(message, imei);
-  strcat_P(message, PSTR("\nNetwork Time: "));
+  strcat_P(message, PSTR("\nDevKey: "));
+  strcat(message, devKey);
+  strcat_P(message, PSTR("\nTime: "));
   strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
 }
@@ -878,6 +878,42 @@ bool handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
   }
 
   return sendSMS(smsSender, message);
+}
+
+bool handleDeleteAllMessagesReq() {
+  for (int8_t i = 0; i < 10; i++) {
+    deleteSMS(i);
+  }
+  return true;
+}
+
+bool handleDevKeyReq(char* smsSender, char* smsValue) {
+
+  // special: smsValue is still case-sensitive.
+  // To save memory, tempStr will be used for the toLower() version of smsValue as well as the message we send back
+  char tempStr[45] = "";
+  strcpy(tempStr, smsValue);
+  toLower(tempStr);
+  
+  char devKey[9] = "";
+
+  // set devKey
+  if (strstr_P(tempStr, PSTR("set"))) {
+    getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8); // max_length
+    EEPROM.put(DEVKEY_CHAR_9, devKey);
+
+    strcpy_P(tempStr, PSTR("Setting devKey to "));
+    strcat(tempStr, devKey);
+  }
+
+  // just respond with current devKey
+  else {
+    EEPROM.get(DEVKEY_CHAR_9, devKey);
+    strcpy(tempStr, devKey);
+    strcat_P(tempStr, PSTR("\nTry \"devkey set ________\""));
+  }
+
+  return sendSMS(smsSender, tempStr);
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1141,7 +1177,7 @@ void debugBlink(short longBlinks, short shortBlinks) {
   }
   for (int cnt=0; cnt < shortBlinks; cnt++) {
     digitalWrite(13, HIGH);
-    delay(150);
+    delay(50);
     digitalWrite(13, LOW);
     delay(300);
   }
