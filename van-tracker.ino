@@ -39,7 +39,7 @@ Basic info codes (0 longs followed by THIS MANY shorts):
   5 = connected to SimCom successfully at startup
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
-  1  = failed  sending SMS
+  1  = failed  sending SMS - will also be followed by more blinking, see below
   2  = success sending SMS
   3  = failed  deleting SMS
   4  = success deleting SMS
@@ -51,13 +51,33 @@ Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, ev
   10 = success turning off GPS
 
 Error codes causing restart (2 longs followed by THIS MANY shorts):
-  1 = in setupSimCom(): "Couldn't find SimCom, restarting."
-  2 = in waitUntilSMSReady(): "SMS never became ready, restarting."
+  1 = failed in setupSimCom(): "Connecting to SimCom failed, restarting"
+  2 = failed in waitUntilSMSReady(): "Connect to SMS failed, restarting"
   3 = failed in getTime()
   4 = failed in checkSMSInput()
   5 = failed to turn on GPS
   6 = failed to get GPS satellite fix
   7 = failed in deleteSMS()
+
+Error codes in failure to send SMS (3 longs followed by THIS MANY shorts) - see https://hologram.io/docs/reference/cloud/embedded/:
+  1 = Connection was closed so we couldn’t read enough
+  2 = Couldn’t parse the message - possibly the wrong devKey
+  3 = Auth section of message was invalid
+  4 = Payload type was invalid
+  5 = Protocol type was invalid
+  6 = An internal error occurred
+  7 = Metadata section of message was formatted incorrectly
+  8 = Topic contained invalid characters or was too long
+  9 = DevKey is not set - owner needs to update it:
+    A. Go to your Hologram dashboard, then Devices, choose your device, then go to Webhooks, then click Generate (or Show) Device Key
+    B. Send a text message to your device: Use the command "devkey set ________" where ________ is the 8-digit Device Key you got in step A
+  10 = Unknown
+
+Network connection failure in waitUntilNetworkConnected() (4 long followed by THIS MANY shorts):
+  This happens before restarting, which will have its own blink code, see above
+    2 = Not registered, trying to attach or searching an operator to register to
+    3 = Registration denied
+    4 = Unknown
 */
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -356,7 +376,7 @@ void checkSMSInput() {
 
   debugBlink(0,1);
 
-  for (int i = 0; i < 30; i++) {
+  for (int i = 0; i < 5; i++) {
     numberOfSMSs = fona.getNumSMS();
     debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
 
@@ -367,6 +387,7 @@ void checkSMSInput() {
       handleSMSInput();
       return;
     }
+    fona.setEchoOff();
     debugPrintln(F("error in checkSMSInput()"));
     delay(1000);
   }
@@ -383,9 +404,7 @@ void handleSMSInput() {
   int8_t smssFound = 0;
 
   for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
-
-    // This is for handling possible runaway (infinite loop) if sim7000 module reports there is > 0 SMSs, but when checking individual slots, they all report they're empty
-    // It's someone else's bug (problem anyway) but we have to handle it.  Life is so hard :((
+    // SimCom module has 10 slots
     if (smsSlotNumber == 10)
       break;
 
@@ -453,6 +472,14 @@ void handleSMSInput() {
 
     if (strstr_P(smsValue, PSTR("owner"))) {
       if (handleOwnerPhoneNumberReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }
+
+    if (strstr_P(smsValue, PSTR("devkey"))) {
+      // special: we want to pass the case-sensitive version to handleDevKeyReq because the devKey is case sensitive
+      getSMSValue(smsSlotNumber, smsValue);
+      if (handleDevKeyReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -608,7 +635,7 @@ bool handleInfoReq(char* smsSender) {
   char ccid[22];
   char imei[16];
   char currentTimeStr[23];
-  char message[130];
+  char message[141];  // current max count is 122
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -1034,33 +1061,67 @@ void deleteSMS(uint8_t msg_number) {
 }
 
 bool sendSMS(char* send_to, char* message) {
-  debugPrintln(F("  Attempting to send SMS:"));
-  debugPrintln(message);
 
-  if (fona.sendSMS(send_to, message)) {
+  // Example of hologramSMSString: "Saaaabbbb+15556667777 Hello, SMS over IP World!"
+  // 'S' (tells Hologram that it's an SMS):               1
+  // devKey:                                              8
+  // phone number including '+' and 3-digit country code: 14
+  // ' ' (required by Hologram):                          1
+  // the message:                                         140
+  // '\0' (it's null-terminated C string!):               1
+
+  char hologramSMSString[165];
+  uint16_t hologramSMSStringLength;
+
+  char devKey[9] = "";
+  char serverName[24] = "";
+  uint16_t serverPort;
+  EEPROM.get(DEVKEY_CHAR_9, devKey);
+  EEPROM.get(SERVERNAME_CHAR_24, serverName);
+  EEPROM.get(SERVERPORT_INT_2, serverPort);
+
+  if (strstr_P(devKey, PSTR("00000000"))) {
+    debugBlink(3,9);
+    debugPrintln(F("DEVKEY NOT SET! DELETING SMS!"));
+    return true;  // we want to delete the incoming SMS so we're not stuck in an infinite loop
+  }
+  
+  strcpy_P(hologramSMSString, PSTR("S"));
+  strcat(hologramSMSString, devKey);
+  strcat(hologramSMSString, send_to);
+  strcat_P(hologramSMSString, PSTR(" "));
+  strcat(hologramSMSString, message);
+  hologramSMSStringLength = strlen(hologramSMSString);
+  
+  debugPrintln(F("  Attempting to send SMS:"));
+  debugPrintln(serverName);
+  debugPrintln(serverPort);
+  debugPrintln(hologramSMSStringLength);
+  debugPrintln(hologramSMSString);
+
+  uint16_t successCode = fona.ConnectAndSendToHologram(serverName, serverPort, hologramSMSString, hologramSMSStringLength);
+
+  debugPrint(F("  Success code: "));
+  itoa(successCode, serverName, 10);
+  debugPrintln(serverName);
+
+  if (successCode == 0) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
     return true;
   } else {
     debugPrintln(F("  Failed to send SMS"));
-    debugBlink(1,1);
+    // see very top for debug blink code meanings (which in this case are coming from the cellular module
+    debugBlink(3,successCode);
     return false;
   }
+return false;
 }
 
-bool sendSMS(char* send_to, const __FlashStringHelper* message) {
-  debugPrintln(F("  Attempting to send SMS:"));
-  debugPrintln(message);
-
-  if (fona.sendSMS(send_to, message)) {
-    debugPrintln(F("  Success sending SMS"));
-    debugBlink(1,2);
-    return true;
-  } else {
-    debugPrintln(F("  Failed to send SMS"));
-    debugBlink(1,1);
-    return false;
-  }
+bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
+  char message[141];  // yeah this sucks, but it's better than having all those strings stored in SRAM as globals
+  strcpy_P(message, (const char*)messageInProgmem);
+  return sendSMS(send_to, message);
 }
 
 
@@ -1217,19 +1278,59 @@ bool getNumberFromString(char* in, char* out, short maxLen) {
   return foundNumber;
 }
 
-bool getOccurrenceInDelimitedString(char* in, char* out, short occur, char delim) {
+void cleanString(char* stringToClean, char charToClean) {
+  // in:  "  some  string   with stuff  "
+  // out: "some string with stuff"
+  short outCount = 0;
+  bool lastCharWasCharToClean = false;
+  
+  for (int i = 0; stringToClean[i]; i++) {
+    if (stringToClean[i] == charToClean) {
+      if (outCount == 0)                        // seeing ' ' at the beginning of the string, skip it
+        continue;
+      if (lastCharWasCharToClean == true)       // if this is the second ' ' in a row, skip it
+        continue;
+      else {
+        stringToClean[outCount] = stringToClean[i];   // else, it's the first ' ' in a row, write it
+        outCount++;
+      }
+      lastCharWasCharToClean = true;
+    }
+    else {
+      stringToClean[outCount] = stringToClean[i];
+      outCount++;
+      lastCharWasCharToClean = false;
+    }
+  }
+
+  if (stringToClean[outCount-1] == charToClean)
+    stringToClean[outCount-1] = '\0';
+  else
+    stringToClean[outCount] = '\0';
+}
+
+bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber, char delim) {
+  // yeah I know.  Trying to save program space.
+  return getOccurrenceInDelimitedString(in, out, occurrenceNumber, delim, 9999);
+}
+
+bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber, char delim, short maxLength) {
   // if in == "a,b,c"
-  // and occur = 2
+  // and occurrenceNumber = 2
   // and delim = ','
   // sets out = "b"
   // be sure to leave room for '\0'
+
+  // maxLength is due to the bug in the SIM7000A for strings like "aa{a" it'll tell us it's 5 chars long. See https://forum.arduino.cc/index.php?topic=660925.0
   short delimCount = 0;
   short outCount = 0;
   bool foundOccurrence = false;
 
-  for (int i = 0; in[i]; i++) {
+  cleanString(in, delim);
+
+  for (int i = 0; in[i] && outCount < maxLength; i++) {
     if (in[i] == delim) {
-      if (delimCount + 1 == occur) {
+      if (delimCount + 1 == occurrenceNumber) {
         break;
       }
       else {
@@ -1238,7 +1339,7 @@ bool getOccurrenceInDelimitedString(char* in, char* out, short occur, char delim
       }
     }
 
-    if (delimCount + 1 == occur) {
+    if (delimCount + 1 == occurrenceNumber) {
       out[outCount] = in[i];
       outCount++;
       foundOccurrence = true;
@@ -1385,13 +1486,23 @@ void waitUntilNetworkConnected() {
   for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
     netConn = fona.getNetworkStatus();
+    
+    // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
+    // 1 Registered, home
+    // 2 Not registered, trying to attach or searching an operator to register to
+    // 3 Registration denied
+    // 4 Unknown
+    // 5 Registered, roaming
     if (netConn == 1 || netConn == 5) {
       debugPrintln(F("\nConnected"));
       fona.setNetworkSettings(APN, F(""), F(""));
+      fona.TCPshut();  // just in case GPRS is still on for some reason, save power
       return;
     }
     delay(2000);
   }
+
+  debugBlink(4, netConn);
   reportAndRestart(2, F("Connect to network failed, restarting"));
 }
 
@@ -1761,6 +1872,11 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
   if (strstr_P(smsValue, PSTR("owner"))) {
     handleOwnerPhoneNumberReq(smsSender, smsValue);
+    return;
+  }
+
+  if (strstr_P(smsValue, PSTR("devkey"))) {
+    handleDevKeyReq(smsSender, smsValue);
     return;
   }
 
