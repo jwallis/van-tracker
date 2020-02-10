@@ -87,12 +87,12 @@ Network connection failure in waitUntilNetworkConnected() (4 long followed by TH
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #define APN           F("hologram")
-#define SERVER_NAME   "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!
+#define SERVER_NAME   "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!  See https://hologram.io/docs/reference/cloud/embedded/#send-an-sms-via-the-hologram-cloud
 #define SERVER_PORT   9999
 
 #define VAN_PROD
 //#define VAN_TEST
-//#define NEW_HARDWARE_ONLY  // Initializes new sim7000 module as well as new arduino's EEPROM
+//#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
 
 #define BOARD_UNO_NANO
 //#define BOARD_MEGA
@@ -278,7 +278,7 @@ void watchDogForKillSwitch() {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-    if (sendSMS(ownerPhoneNumber, F("WARNING!\nStart attempted while kill switch enabled"))) {
+    if (sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch enabled"))) {
       startAttemptedWhileKillSwitchOnVolatile = false;
     }
   }
@@ -353,11 +353,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   else
     strcpy_P(message, PSTR("GEOFENCE WARNING!"));
 
-  strcat_P(message, PSTR("\nCurrent:\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\nCurrent:\\ngoogle.com/search?q="));
   strcat(message, currentLat);
   strcat_P(message, PSTR(","));
   strcat(message, currentLon);
-  strcat_P(message, PSTR("\nHome:\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\nHome:\\ngoogle.com/search?q="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -514,7 +514,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
 
   if (lockdownEnabled) {
     if (strstr_P(smsValue, PSTR("kill")) || strstr_P(smsValue, PSTR("fence"))) {
-      if (sendSMS(smsSender, F("Warning: Lockdown Enabled\nTry \"unlock\" before trying to modify fence or kill")))
+      if (sendSMS(smsSender, F("Warning: Lockdown Enabled\\nTry \"unlock\" before trying to modify fence or kill")))
         deleteSMS(smsSlotNumber);
       return true;
     }
@@ -583,12 +583,12 @@ bool handleLockReq(char* smsSender) {
   // set lockdown variable ON
   EEPROM.put(LOCKDOWNENABLED_BOOL_1, true);
 
-  char message[120];
+  char message[122];
 
   // send SMS with new geofence home
-  strcpy_P(message, PSTR("Lockdown: Enabled\nRadius: "));
+  strcpy_P(message, PSTR("Lockdown: Enabled\\nRadius: "));
   strcat(message, geofenceRadius);
-  strcat_P(message, PSTR(" feet\nHome: google.com/search?q="));
+  strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -630,10 +630,10 @@ bool handleUnlockReq(char* smsSender) {
   // set lockdown variable OFF
   EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
 
-  char message[100];
+  char message[101];
 
   // send SMS with original geofenceHome
-  strcpy_P(message, PSTR("Lockdown: Disabled (previous settings restored)\nHome: google.com/search?q="));
+  strcpy_P(message, PSTR("Lockdown: Disabled (previous settings restored)\\nHome: google.com/search?q="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -647,7 +647,7 @@ bool handleInfoReq(char* smsSender) {
   char ccid[22];
   char imei[16];
   char currentTimeStr[23];
-  char message[141];  // current max count is 122
+  char message[141];  // current max count is 128
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -673,17 +673,17 @@ bool handleInfoReq(char* smsSender) {
 
   strcpy_P(message, PSTR("Owner: "));
   strcat(message, ownerPhoneNumber);
-  strcat_P(message, PSTR("\nLockdown: "));
+  strcat_P(message, PSTR("\\nLockdown: "));
   strcat(message, lockdownStr);
-  strcat_P(message, PSTR("\nRSSI: "));
+  strcat_P(message, PSTR("\\nRSSI: "));
   strcat(message, rssiStr);
-  strcat_P(message, PSTR("\nCCID: "));
+  strcat_P(message, PSTR("\\nCCID: "));
   strcat(message, ccid);
-  strcat_P(message, PSTR("\nIMEI: "));
+  strcat_P(message, PSTR("\\nIMEI: "));
   strcat(message, imei);
-  strcat_P(message, PSTR("\nDevKey: "));
+  strcat_P(message, PSTR("\\nDevKey: "));
   strcat(message, devKey);
-  strcat_P(message, PSTR("\nTime: "));
+  strcat_P(message, PSTR("\\nTime: "));
   strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
 }
@@ -711,11 +711,11 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
     return sendSMS(smsSender, F("Follow: DISABLED"));
   }
-  return sendSMS(smsSender, F("Try \"follow\" plus:\nenable/disable"));  
+  return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));  
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue) {
-  char message[64] = "";
+  char message[65] = "";
 
   bool killSwitchEnabled;
   char killSwitchStart[3];
@@ -754,7 +754,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
     else
       strcat_P(message, PSTR("Dis"));
 
-    strcat_P(message, PSTR("abled\nHours: "));
+    strcat_P(message, PSTR("abled\\nHours: "));
     strcat(message, killSwitchStart);
     strcat_P(message, PSTR("-"));
     strcat(message, killSwitchEnd);
@@ -765,12 +765,12 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"kill\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)"));
+    return sendSMS(smsSender, F("Try \"kill\" plus:\\nenable/disable\\ninfo\\nhours 0 21 (12am-9pm)"));
   }
 }
 
 bool handleGeofenceReq(char* smsSender, char* smsValue) {
-  char message[132] = "";
+  char message[135] = "";
 
   bool geofenceEnabled;
   char geofenceStart[3];
@@ -837,16 +837,16 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
     else
       strcat_P(message, PSTR("Dis"));
 
-    strcat_P(message, PSTR("abled\nHours: "));
+    strcat_P(message, PSTR("abled\\nHours: "));
     strcat(message, geofenceStart);
     strcat_P(message, PSTR("-"));
     strcat(message, geofenceEnd);
     if (strcmp(geofenceStart, geofenceEnd) == 0) {  // if start time == end time  
       strcat_P(message, PSTR(" (always on)"));
     }
-    strcat_P(message, PSTR("\nRadius: "));
+    strcat_P(message, PSTR("\\nRadius: "));
     strcat(message, geofenceRadius);
-    strcat_P(message, PSTR(" feet\nHome: google.com/search?q="));
+    strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
@@ -854,12 +854,12 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"fence\" plus:\nenable/disable\ninfo\nhours 0 21 (12am-9pm)\nhome (uses current loc)\nradius 100 (100 feet)"));
+    return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\ninfo\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 100 (100 feet)"));
   }
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[90] = "";
+  char message[92] = "";
   char ownerPhoneNumber[15] = "";
 
   // set owner number
@@ -878,7 +878,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcpy(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\nTry \"owner\" plus:\nset (include number *with country code* or leave blank for YOUR number)"));
+    strcat_P(message, PSTR("\\nTry \"owner\" plus:\\nset (include number *with country code* or leave blank for YOUR number)"));
   }
 
   return sendSMS(smsSender, message);
@@ -895,7 +895,7 @@ bool handleDevKeyReq(char* smsSender, char* smsValue) {
 
   // special: smsValue is still case-sensitive.
   // To save memory, tempStr will be used for the toLower() version of smsValue as well as the message we send back
-  char tempStr[45] = "";
+  char tempStr[46] = "";
   strcpy(tempStr, smsValue);
   toLower(tempStr);
   
@@ -914,14 +914,14 @@ bool handleDevKeyReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(DEVKEY_CHAR_9, devKey);
     strcpy(tempStr, devKey);
-    strcat_P(tempStr, PSTR("\nTry \"devkey set ________\""));
+    strcat_P(tempStr, PSTR("\\nTry \"devkey set ________\""));
   }
 
   return sendSMS(smsSender, tempStr);
 }
 
 bool handleCommandsMessagesReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\nfence\nfollow\ninfo\nkill\nloc\nowner\nlock\nunlock"));
+  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\ninfo\\nkill\\nloc\\nowner\\nlock\\nunlock"));
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1313,9 +1313,9 @@ void toLower(char* str) {
 }
 
 void addPlusToPhoneNumber(char* phoneNumber) {
-  // in:  "15554443333"
-  // out: "+15554443333"
-  phoneNumber[14] = '\n';  // phoneNumber is of size 15
+  // in:  "15554443333\0\0\0\0"
+  // out: "+15554443333\0\0\0"
+  phoneNumber[14] = '\0';  // phoneNumber is of size 15
 
   for (int i = 14; i > 0; i--) {
     phoneNumber[i] = phoneNumber[i-1];
