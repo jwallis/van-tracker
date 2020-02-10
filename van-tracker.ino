@@ -405,7 +405,7 @@ void handleSMSInput() {
 
   for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
     // SimCom module has 10 slots
-    if (smsSlotNumber == 10)
+    if (smsSlotNumber >= 10)
       break;
 
     if (isSMSSlotFilled(smsSlotNumber))
@@ -422,7 +422,7 @@ void handleSMSInput() {
     debugPrintln(smsSender);
     debugPrintln(smsValue);
 
-    if (strstr_P(smsValue, PSTR("unlock"))) {
+    if (strcmp_P(smsValue, PSTR("unlock")) == 0) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -431,7 +431,7 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr_P(smsValue, PSTR("lock"))) {
+    if (strcmp_P(smsValue, PSTR("lock")) == 0) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -440,7 +440,7 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr_P(smsValue, PSTR("loc"))) {
+    if (strcmp_P(smsValue, PSTR("loc")) == 0) {
       if (handleLocReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
@@ -471,7 +471,7 @@ void handleSMSInput() {
     }
 
     if (strstr_P(smsValue, PSTR("owner"))) {
-      if (handleOwnerPhoneNumberReq(smsSender, smsValue))
+      if (handleOwnerReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -484,16 +484,16 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strstr_P(smsValue, PSTR("info"))) {
+    if (strcmp_P(smsValue, PSTR("info")) == 0) {
       if (handleInfoReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
-    if (strstr_P(smsValue, PSTR("deleteallmessages"))) {
+    if (strcmp_P(smsValue, PSTR("deleteallmessages")) == 0) {
       if (handleDeleteAllMessagesReq())
         deleteSMS(smsSlotNumber);
-      return;
+      return;     // notice this is return not continue!
     }
 
     // default
@@ -1116,10 +1116,12 @@ bool sendSMS(char* send_to, char* message) {
   EEPROM.get(SERVERNAME_CHAR_24, serverName);
   EEPROM.get(SERVERPORT_INT_2, serverPort);
 
+  // 00000000 is the default devKey (comes from initEEPROM)
+  // we delete the incoming SMS so we don't try to send the msg indefinitely
   if (strstr_P(devKey, PSTR("00000000"))) {
     debugBlink(3,9);
     debugPrintln(F("DEVKEY NOT SET! DELETING SMS!"));
-    return true;  // we want to delete the incoming SMS so we're not stuck in an infinite loop
+    return true;
   }
   
   strcpy_P(hologramSMSString, PSTR("S"));
@@ -1907,7 +1909,7 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   }
 
   if (strstr_P(smsValue, PSTR("owner"))) {
-    handleOwnerPhoneNumberReq(smsSender, smsValue);
+    handleOwnerReq(smsSender, smsValue);
     return;
   }
 
