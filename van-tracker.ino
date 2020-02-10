@@ -490,6 +490,12 @@ void handleSMSInput() {
       continue;
     }
 
+    if (strcmp_P(smsValue, PSTR("commands")) == 0) {
+      if (handleCommandsMessagesReq(smsSender))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     if (strcmp_P(smsValue, PSTR("deleteallmessages")) == 0) {
       if (handleDeleteAllMessagesReq())
         deleteSMS(smsSlotNumber);
@@ -852,29 +858,27 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
   }
 }
 
-bool handleOwnerPhoneNumberReq(char* smsSender, char* smsValue) {
-  char message[70] = "";
+bool handleOwnerReq(char* smsSender, char* smsValue) {
+  char message[90] = "";
   char ownerPhoneNumber[15] = "";
 
   // set owner number
   if (strstr_P(smsValue, PSTR("set"))) {
-    getNumberFromString(smsValue, ownerPhoneNumber, 15);
-
-    // if "set" was found but no number was found, use the number of the person who sent the text
-    if (!ownerPhoneNumber[0]) {
-      getNumberFromString(smsSender, ownerPhoneNumber, 15);
-    }
+    if (getNumberFromString(smsValue, ownerPhoneNumber, 15))  // If number is found in the SMS,
+      addPlusToPhoneNumber(ownerPhoneNumber);                 // add a '+' to the beginning...
+    else
+      strcpy(ownerPhoneNumber, smsSender);
 
     strcpy_P(message, PSTR("Setting owner phone # to "));
-    strcat(message, ownerPhoneNumber);
+    strcat(message, &ownerPhoneNumber[1]);
     EEPROM.put(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
   }
 
   // just respond with current owner number
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    strcpy(message, ownerPhoneNumber);
-    strcat_P(message, PSTR("\nTry \"owner\" plus:\nset (include number or blank for YOUR number)"));
+    strcpy(message, &ownerPhoneNumber[1]);
+    strcat_P(message, PSTR("\nTry \"owner\" plus:\nset (include number *with country code* or leave blank for YOUR number)"));
   }
 
   return sendSMS(smsSender, message);
@@ -916,8 +920,19 @@ bool handleDevKeyReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, tempStr);
 }
 
-bool handleUnknownReq(char* smsSender) {
+bool handleCommandsMessagesReq(char* smsSender) {
   return sendSMS(smsSender, F("Commands:\nfence\nfollow\ninfo\nkill\nloc\nowner\nlock\nunlock"));
+}
+
+bool handleUnknownReq(char* smsSender) {
+  char ownerPhoneNumber[15];
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
+  // if they're not the owner, don't send them the commands, just return true so their msg will be deleted
+  if (strcmp(smsSender, ownerPhoneNumber) == 0)
+    return handleCommandsMessagesReq(smsSender);
+  else
+    return true;
 }
 
 bool isSMSSlotFilled(int8_t smsSlotNumber) {
@@ -1297,6 +1312,17 @@ void toLower(char* str) {
     str[i] = tolower(str[i]);
 }
 
+void addPlusToPhoneNumber(char* phoneNumber) {
+  // in:  "15554443333"
+  // out: "+15554443333"
+  phoneNumber[14] = '\n';  // phoneNumber is of size 15
+
+  for (int i = 14; i > 0; i--) {
+    phoneNumber[i] = phoneNumber[i-1];
+  }
+  phoneNumber[0] = '+';
+}
+
 bool getNumberFromString(char* in, char* out, short maxLen) {
   // if in == "aaa+123b-b4b5"
   // then out = "12345"
@@ -1558,7 +1584,7 @@ void initEEPROM() {
   EEPROM.put(KILLSWITCHENABLED_BOOL_1, false);
   EEPROM.put(KILLSWITCHSTART_CHAR_3, "00");
   EEPROM.put(KILLSWITCHEND_CHAR_3, "00");
-  EEPROM.put(OWNERPHONENUMBER_CHAR_15, "5551234567");
+  EEPROM.put(OWNERPHONENUMBER_CHAR_15, "+15551234567");
   EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
   
   EEPROM.put(DEVKEY_CHAR_9, "00000000");
