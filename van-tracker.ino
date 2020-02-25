@@ -179,6 +179,7 @@ void setup() {
   
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
+  initBaud();
   setupSimCom();
   initEEPROM();
   initSimCom();
@@ -199,6 +200,7 @@ void loop() {
   flushSimCom();
 #endif
 
+  fona.TCPshut();  // save power...
   checkSMSInput();
   watchDog();
   delay(500);
@@ -1276,11 +1278,10 @@ void restartSystem() {
   sendRawCommand(F("AT+CPOWD=1"));
   delay(15000);
 
-  // reset arduino
-  wdt_disable();
-  wdt_enable(WDTO_15MS);
-  debugPrintln(F("about to reset"));
-  while (1) {}
+  // reconnect to SimCom
+  setupSimCom();
+  waitUntilSMSReady();
+  waitUntilNetworkConnected();
 }
 
 void insertZero(char *in) {
@@ -1506,6 +1507,33 @@ void setGeofencePins(bool tf) {
 void setupSerial() {
   while (!Serial);
   Serial.begin(115200);
+}
+#endif
+
+
+#ifdef NEW_HARDWARE_ONLY
+void initBaud() {
+  debugPrintln(F("Init Baud"));
+  delay(2000);
+  debugPrintln(F("Trying to connect at 9600"));
+  SimComSerial->begin(9600);
+
+  if (! fona.begin(*SimComSerial)) {
+    debugPrintln(F("Trying to connect at 115200"));
+    SimComSerial->begin(115200);
+    
+    if (! fona.begin(*SimComSerial)) {
+      debugPrintln(F("ERROR: Could not connect at 9600 or 115200"));
+      return;
+    } else {
+      debugPrintln(F("Connected at 115200, setting to 9600..."));
+      sendRawCommand(F("AT+IPR=9600"));
+      SimComSerial->begin(9600);
+    }
+  } else {
+    debugPrintln(F("Connected at 9600"));
+    return;
+  }
 }
 #endif
 
