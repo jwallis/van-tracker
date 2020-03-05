@@ -86,9 +86,10 @@ Network connection failure in waitUntilNetworkConnected() (4 long followed by TH
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-#define APN           F("hologram")
-#define SERVER_NAME   "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!  See https://hologram.io/docs/reference/cloud/embedded/#send-an-sms-via-the-hologram-cloud
-#define SERVER_PORT   9999
+#define APN               F("hologram")
+#define CGDCONT_COMMAND   F("AT+CGDCONT=1,\"IP\",\"hologram\"")
+#define SERVER_NAME       "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!  See https://hologram.io/docs/reference/cloud/embedded/#send-an-sms-via-the-hologram-cloud
+#define SERVER_PORT       9999
 
 #define VAN_PROD
 //#define VAN_TEST
@@ -1497,7 +1498,7 @@ void setGeofencePins(bool tf) {
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY
 void setupSerial() {
   while (!Serial);
-  Serial.begin(115200);
+  Serial.begin(9600);
 }
 #endif
 
@@ -1616,16 +1617,19 @@ void initEEPROM() {
 void initSimCom() {
   // used on brand-new SimCom module
   debugPrintln(F("Begin initSimCom()"));
+
   sendRawCommand(F("ATZ"));                 // Reset settings
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
-  sendRawCommand(F("AT+CLTS=1"));           // turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
-
-// let's keep this LED on for now...
-//  sendRawCommand(F("AT+CNETLIGHT=0"));      // stop "net" LED
-
+  sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
+  sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
+  sendRawCommand(CGDCONT_COMMAND);          // Set APN
+  sendRawCommand(F("AT+COPS=0"));           // Set Cellular OPerator Selection to "automatic"
   sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
+
   sendRawCommand(F("AT&W"));                // save writeable settings
+
   debugPrintln(F("End initSimCom().\n\nPlease update #ifdefs and restart."));
+  debugBlink(5,0);
   while (1) {}
 }
 #endif
