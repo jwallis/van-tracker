@@ -10,7 +10,7 @@
 /*
    Quick TCs
     -garbage
-    -info
+    -status
     -loc
     -owner
     -owner set
@@ -486,8 +486,8 @@ void handleSMSInput() {
       continue;
     }
 
-    if (strcmp_P(smsValue, PSTR("info")) == 0) {
-      if (handleInfoReq(smsSender))
+    if (strcmp_P(smsValue, PSTR("status")) == 0) {
+      if (handleStatusReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -643,11 +643,10 @@ bool handleUnlockReq(char* smsSender) {
   return sendSMS(smsSender, message);
 }
 
-bool handleInfoReq(char* smsSender) {
+bool handleStatusReq(char* smsSender) {
   uint8_t rssi;
   char rssiStr[4];
   char ccid[22];
-  char imei[16];
   char currentTimeStr[23];
   char message[141];  // current max count is 128
 
@@ -666,10 +665,6 @@ bool handleInfoReq(char* smsSender) {
   rssi = fona.getRSSI();
   itoa(rssi, rssiStr, 10);
   fona.getSIMCCID(ccid);
-  fona.getIMEI(imei);
-
-  char devKey[9];
-  EEPROM.get(DEVKEY_CHAR_9, devKey);
 
   getTime(currentTimeStr);
 
@@ -681,10 +676,6 @@ bool handleInfoReq(char* smsSender) {
   strcat(message, rssiStr);
   strcat_P(message, PSTR("\\nCCID: "));
   strcat(message, ccid);
-  strcat_P(message, PSTR("\\nIMEI: "));
-  strcat(message, imei);
-  strcat_P(message, PSTR("\\nDevKey: "));
-  strcat(message, devKey);
   strcat_P(message, PSTR("\\nTime: "));
   strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
@@ -748,7 +739,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
     }
   }
 
-  if (message[0] || strstr_P(smsValue, PSTR("info"))) {
+  if (message[0] || strstr_P(smsValue, PSTR("status"))) {
     //  Yay only 2k of RAM
     strcpy_P(message, PSTR("Kill: "));
     if (killSwitchEnabled)
@@ -767,7 +758,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"kill\" plus:\\nenable/disable\\ninfo\\nhours 0 21 (12am-9pm)"));
+    return sendSMS(smsSender, F("Try \"kill\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)"));
   }
 }
 
@@ -826,7 +817,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
   // reset this so the "follow" message will be sent when the fence is broken
   lastGeofenceWarningMinute = -1;
 
-  if (message[0] || strstr_P(smsValue, PSTR("info"))) {
+  if (message[0] || strstr_P(smsValue, PSTR("status"))) {
     //    Yay only 2k of RAM, doing this all piecemeal (instead of big strings as is done in this comment) saves 54 bytes!!!!!!!
     //    if (geofenceEnabled)
     //      sprintf(message, "ENABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
@@ -856,7 +847,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\ninfo\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 100 (100 feet)"));
+    return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 100 (100 feet)"));
   }
 }
 
@@ -923,7 +914,7 @@ bool handleDevKeyReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsMessagesReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\ninfo\\nkill\\nloc\\nowner\\nlock\\nunlock"));
+  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock\\nunlock"));
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1925,7 +1916,7 @@ void handleSerialInput(String command) {
   }
 
   // Test incoming SMS, for example:
-  // 5554443333_fence info
+  // 5554443333_fence status
   if (command.length() > 2){
     char smsSender[15];
     char smsValue[51];
@@ -1972,8 +1963,8 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
     return;
   }
 
-  if (strstr_P(smsValue, PSTR("info"))) {
-    handleInfoReq(smsSender);
+  if (strstr_P(smsValue, PSTR("status"))) {
+    handleStatusReq(smsSender);
     return;
   }
 
