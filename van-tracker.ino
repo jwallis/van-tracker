@@ -89,7 +89,6 @@ New hardware initialization complete (5 long followed by 0 short)
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #define APN               F("hologram")
-#define CGDCONT_COMMAND   F("AT+CGDCONT=1,\"IP\",\"hologram\"")
 #define SERVER_NAME       "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!  See https://hologram.io/docs/reference/cloud/embedded/#send-an-sms-via-the-hologram-cloud
 #define SERVER_PORT       9999
 
@@ -1566,6 +1565,7 @@ void waitUntilNetworkConnected() {
   
   for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
+    fona.setNetworkSettings(APN, F(""), F(""));
     netConn = fona.getNetworkStatus();
     
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
@@ -1629,7 +1629,6 @@ void initSimCom() {
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
   sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
   sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
-  sendRawCommand(CGDCONT_COMMAND);          // Set APN
   sendRawCommand(F("AT+COPS=0"));           // Set Cellular OPerator Selection to "automatic"
   sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
 
