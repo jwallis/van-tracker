@@ -78,6 +78,8 @@ Network connection failure in waitUntilNetworkConnected() (4 long followed by TH
     2 = Not registered, trying to attach or searching an operator to register to
     3 = Registration denied
     4 = Unknown
+
+New hardware initialization complete (5 long followed by 0 short)
 */
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -97,9 +99,6 @@ Network connection failure in waitUntilNetworkConnected() (4 long followed by TH
 
 #define BOARD_UNO_NANO
 //#define BOARD_MEGA
-
-#define AND_TECH_SIM7000_BREAKOUT
-//#define ADAFRUIT_FONA_SHIELD
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -184,6 +183,9 @@ void setup() {
   setupSimCom();
   initEEPROM();
   initSimCom();
+  debugPrintln(F("\n\nPlease update #ifdefs and restart."));
+  debugBlink(5,0);
+  while (1) {}
 #endif
 
 #ifdef VAN_TEST
@@ -201,7 +203,6 @@ void loop() {
   flushSimCom();
 #endif
 
-  fona.TCPshut();  // save power...
   checkSMSInput();
   watchDog();
   delay(500);
@@ -649,7 +650,7 @@ bool handleStatusReq(char* smsSender) {
   char rssiStr[4];
   char ccid[22];
   char currentTimeStr[23];
-  char message[141];  // current max count is 128
+  char message[141];
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -677,7 +678,7 @@ bool handleStatusReq(char* smsSender) {
   strcat(message, rssiStr);
   strcat_P(message, PSTR("\\nCCID: "));
   strcat(message, ccid);
-  strcat_P(message, PSTR("\\nTime: "));
+  strcat_P(message, PSTR("\\nNetwork Time: "));
   strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
 }
@@ -848,7 +849,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 100 (100 feet)"));
+    return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 300 (300 feet)"));
   }
 }
 
@@ -1155,14 +1156,15 @@ bool sendSMS(char* send_to, char* message) {
   if (successCode == 0) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
+    fona.TCPshut();
     return true;
   } else {
     debugPrintln(F("  Failed to send SMS"));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(3,successCode);
+    fona.TCPshut();
     return false;
   }
-return false;
 }
 
 bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
@@ -1534,12 +1536,7 @@ void setupSimCom() {
   // let SimCom module start up before we try to connect
   delay(5000);
 
-#ifdef ADAFRUIT_FONA_SHIELD
-  SimComSerial->begin(4800);
-#endif
-#ifdef AND_TECH_SIM7000_BREAKOUT
   SimComSerial->begin(9600);
-#endif
 
   // TBD make this loop for up to 90s
   if (! fona.begin(*SimComSerial)) {
@@ -1638,9 +1635,7 @@ void initSimCom() {
 
   sendRawCommand(F("AT&W"));                // save writeable settings
 
-  debugPrintln(F("End initSimCom().\n\nPlease update #ifdefs and restart."));
-  debugBlink(5,0);
-  while (1) {}
+  debugPrintln(F("End initSimCom()"));
 }
 #endif
 
@@ -1749,6 +1744,9 @@ void getEEPROM() {
   EEPROM.get(GEOFENCERADIUS_CHAR_7, tempc);
   Serial.write ("GEOFENCERADIUS_CHAR_7: ");
   debugPrintln(tempc);
+  EEPROM.get(GEOFENCEFOLLOW_BOOL_1, tempb);
+  Serial.write ("GEOFENCEFOLLOW_BOOL_1: ");
+  debugPrintln(tempb);
   EEPROM.get(KILLSWITCHENABLED_BOOL_1, tempb);
   Serial.write ("KILLSWITCHENABLED_BOOL_1: ");
   debugPrintln(tempb);
@@ -1771,6 +1769,10 @@ void getEEPROM() {
   Serial.write ("SERVERPORT_INT_2: ");
   itoa(tempi, tempc, 10);
   debugPrintln(tempc);
+
+  EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
+  Serial.write ("LOCKDOWNENABLED_BOOL_1: ");
+  debugPrintln(tempb);
 }
 
 void checkSerialInput() {
@@ -1815,6 +1817,7 @@ void handleSerialInput(String command) {
   if (strcmp_P(temp, PSTR("S")) == 0) {
     sendRawCommand(F("AT+CMEE=2"));
     sendRawCommand(F("ATE1"));
+    
     delay(2000);    
 
     debugPrintln(F("Serial:"));
@@ -1828,95 +1831,7 @@ void handleSerialInput(String command) {
       }
     }
   }
-    //    case 'n': {
-    //        // read the network/cellular status
-    //        uint8_t n = fona.getNetworkStatus();
-    //        Serial.print(F("Network status "));
-    //        Serial.print(n);
-    //        Serial.print(F(": "));
-    //        if (n == 0) debugPrintln(F("Not registered"));
-    //        if (n == 1) debugPrintln(F("Registered (home)"));
-    //        if (n == 2) debugPrintln(F("Not registered (searching)"));
-    //        if (n == 3) debugPrintln(F("Denied"));
-    //        if (n == 4) debugPrintln(F("Unknown"));
-    //        if (n == 5) debugPrintln(F("Registered roaming"));
-    //        break;
-    //      }
-    //
-    //    /*** SMS ***/
-    //
-    //  if (strcmp_P(temp, PSTR("n")) == 0) {
-    //            // read the number of SMS's!
-    //  
-    //            int8_t smsnum = fona.getNumSMS();
-    //            if (smsnum < 0) {
-    //              debugPrintln(F("Could not read # SMS"));
-    //            } else {
-    //              Serial.print(smsnum);
-    //              debugPrintln(F(" SMS's on SIM card!"));
-    //            }
-    //          }
-    //  if (strcmp_P(temp, PSTR("r")) == 0) {
-    //            // read an SMS
-    //            flushSerial();
-    //            Serial.print(F("Read #"));
-    //            uint8_t smsn = readnumber();
-    //    
-    //    
-    //            // Retrieve SMS sender address/phone number.
-    //            if (! fona.getSMSSender(smsn, replybuffer, 250)) {
-    //              debugPrintln("Failed!");
-    //              break;
-    //            }
-    //            Serial.print("FROM: "); debugPrintln(replybuffer);
-    //    
-    //            // Retrieve SMS value.
-    //            uint16_t smslen;
-    //            if (! fona.readSMS(smsn, replybuffer, 250, &smslen)) { // pass in buffer and max len!
-    //              debugPrintln("Failed!");
-    //              break;
-    //            }
-    //            Serial.print(F("***** SMS #")); Serial.print(smsn);
-    //            Serial.print(" ("); Serial.print(smslen); debugPrintln(F(") bytes *****"));
-    //            debugPrintln(replybuffer);
-    //            debugPrintln(F("*****"));
-    //    
-    //          }
-    //    case 'R': {
-    //        // read all SMS
-    //        int8_t smsnum = fona.getNumSMS();
-    //        uint16_t smslen;
-    //        int8_t smsn;
-    //
-    //        if ( (type == FONA3G_A) || (type == FONA3G_E) ) {
-    //          smsn = 0; // zero indexed
-    //          smsnum--;
-    //        } else {
-    //          smsn = 1;  // 1 indexed
-    //        }
-    //
-    //        for ( ; smsn <= smsnum; smsn++) {
-    //          Serial.print(F("\n\rReading SMS #")); debugPrintln(smsn);
-    //          if (!fona.readSMS(smsn, replybuffer, 250, &smslen)) {  // pass in buffer and max len!
-    //            debugPrintln(F("Failed!"));
-    //            break;
-    //          }
-    //          // if the length is zero, its a special case where the index number is higher
-    //          // so increase the max we'll look at!
-    //          if (smslen == 0) {
-    //            debugPrintln(F("[empty slot]"));
-    //            smsnum++;
-    //            continue;
-    //          }
-    //
-    //          Serial.print(F("***** SMS #")); Serial.print(smsn);
-    //          Serial.print(" ("); Serial.print(smslen); debugPrintln(F(") bytes *****"));
-    //          debugPrintln(replybuffer);
-    //          debugPrintln(F("*****"));
-    //        }
-    //        break;
-    //      }
-    //
+
   if (strcmp_P(temp, PSTR("d")) == 0) {
     for (int i = 2; i < 10; i++) {
       debugPrintln(F("  Delete SMS:"));
