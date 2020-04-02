@@ -1047,26 +1047,28 @@ void setGPS(bool tf) {
   }
 }
 
-void getGPSLatLon(char* latitude, char* longitude) {
+bool getGPSLatLon(char* latitude, char* longitude) {
   char gpsString[120];
 
   setGPS(true);
-  fona.getGPS(0, gpsString, 120);
-  lastGPSQueryMinute = getCurrentMinuteInt();
 
   // full string:
   // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-  getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
-  getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
+  for (short i = 0; i < 10; i++) {
+    fona.getGPS(0, gpsString, 120);
+    lastGPSQueryMinute = getCurrentMinuteInt();
 
-#ifdef VAN_TEST
-  char message[46];
-  strcpy_P(message, PSTR("google.com/search?q="));
-  strcat(message, latitude);
-  strcat_P(message, PSTR(","));
-  strcat(message, longitude);
-  debugPrintln(message);
-#endif
+    getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
+    getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
+
+    // we have see errors where the lat,long come back as garbage like "9,43"
+    if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
+      return true;
+    }
+  }
+  latitude[0] = '\0';
+  longitude[0] = '\0';
+  return false;
 }
 
 void getTime(char* currentTimeStr) {
