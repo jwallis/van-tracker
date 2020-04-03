@@ -8,29 +8,6 @@
 */
 
 /*
-   Quick TCs
-    -garbage
-    -status
-    -loc
-    -owner
-    -owner set
-    -owner set 333 444-5555
-    -kill
-    -kill disable
-    -kill enable
-    -fence
-    -fence disable
-    -fence enable
-    -fence home
-    -fence hours
-    -fence hours 23
-    -fence hours 23 8
-    -fence hours 0 0
-    -fence radius
-    -fence radius 234
-*/
-
-/*
 Blink debug codes - the Arduino Nono will blink these codes during operation:
 
 Basic info codes (0 longs followed by THIS MANY shorts):
@@ -96,14 +73,10 @@ New hardware initialization complete (5 long followed by 0 short)
 //#define VAN_TEST
 //#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
 
-#define BOARD_UNO_NANO
-//#define BOARD_MEGA
-
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
 
 
 #include "Adafruit_FONA.h"
@@ -115,13 +88,7 @@ New hardware initialization complete (5 long followed by 0 short)
 #define STARTER_INTERRUPT_ID 0   // interrupt 0 == pin 2.  I hate that.
 #define STARTER_INTERRUPT_PIN 2  // interrupt 0 == pin 2.  I hate that.
 #define SIMCOM_RX_PIN 3
-
-#ifdef BOARD_UNO_NANO
 #define SIMCOM_TX_PIN 4
-#endif
-#ifdef BOARD_MEGA
-#define SIMCOM_TX_PIN 11
-#endif
 
 #define KILL_SWITCH_RELAY_PIN 5
 #define KILL_SWITCH_LED_PIN 6
@@ -426,18 +393,12 @@ void handleSMSInput() {
     debugPrintln(smsValue);
 
     if (strcmp_P(smsValue, PSTR("unlock")) == 0) {
-      if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
-        continue;
-
       if (handleUnlockReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
     if (strcmp_P(smsValue, PSTR("lock")) == 0) {
-      if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
-        continue;
-
       if (handleLockReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
@@ -512,81 +473,96 @@ void handleSMSInput() {
 }
 
 bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) {
+  char message[135];
+  char geofenceHomeLat[12];
+  char geofenceHomeLon[12];
+  char geofenceRadius[7];
   bool lockdownEnabled;
-  EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
+
+  // check if lockdown is ENabled
+  EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);  
 
   if (lockdownEnabled) {
-    if (strstr_P(smsValue, PSTR("kill")) || strstr_P(smsValue, PSTR("fence"))) {
-      if (sendSMS(smsSender, F("Warning: Lockdown Enabled\\nTry \"unlock\" before trying to modify fence or kill")))
-        deleteSMS(smsSlotNumber);
-      return true;
-    }
-    if (strstr_P(smsValue, PSTR("lock")) && !strstr_P(smsValue, PSTR("unlock"))) {
-      if (sendSMS(smsSender, F("Lockdown already enabled")))
-        deleteSMS(smsSlotNumber);
-      return true;
-    }
-  }
-  else {
-    if (strstr_P(smsValue, PSTR("unlock"))) {
-      if (sendSMS(smsSender, F("Lockdown already disabled")))
-        deleteSMS(smsSlotNumber);
-      return true;
-    }
+    EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+    EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+    EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
+    
+    strcpy_P(message, PSTR("Lockdown Enabled. Try \"unlock\" before updating fence or kill\\nRadius: "));
+    strcat(message, geofenceRadius);
+    strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
+    strcat(message, geofenceHomeLat);
+    strcat_P(message, PSTR(","));
+    strcat(message, geofenceHomeLon);
+
+    if (sendSMS(smsSender, message))
+      deleteSMS(smsSlotNumber);
+    return true;
   }
   return false;
 }
       
 bool handleLockReq(char* smsSender) {
-  bool geofenceEnabled;
+
+  char message[123];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
-  char geofenceStart[3];
-  char geofenceEnd[3];
-  bool killSwitchEnabled;
-  char killSwitchStart[3];
-  char killSwitchEnd[3];
+  bool lockdownEnabled;
 
-  // store primary variables (except Follow) in saved state variables
-  EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
-  EEPROM.put(GEOFENCEENABLED_BOOL_SAVED_1, geofenceEnabled);
-  EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
-  EEPROM.put(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
-  EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-  EEPROM.put(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
-  EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
-  EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
-  EEPROM.get(GEOFENCESTART_CHAR_3, geofenceStart);
-  EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
-  EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
-  EEPROM.put(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
-  EEPROM.get(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
-  EEPROM.put(KILLSWITCHENABLED_BOOL_SAVED_1, killSwitchEnabled);
-  EEPROM.get(KILLSWITCHSTART_CHAR_3, killSwitchStart);
-  EEPROM.put(KILLSWITCHSTART_CHAR_SAVED_3, killSwitchStart);
-  EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
-  EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
+  // check if lockdown is ALREADY ENabled
+  EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
 
-  // set primary variables (except Follow) to enabled, always on, etc. and use radius = 500
-  // and set fence Home to current location
+  if (lockdownEnabled) {
+    EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+    EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+    EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
+  }
+  else {
+    bool geofenceEnabled;
+    char geofenceStart[3];
+    char geofenceEnd[3];
+    bool killSwitchEnabled;
+    char killSwitchStart[3];
+    char killSwitchEnd[3];
   
-  EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
-  getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
-  EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
-  EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-  strcpy_P(geofenceRadius, PSTR("500"));
-  EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
-  EEPROM.put(GEOFENCESTART_CHAR_3, "00");
-  EEPROM.put(GEOFENCEEND_CHAR_3, "00");
-  EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
-  EEPROM.put(KILLSWITCHSTART_CHAR_3, "00");
-  EEPROM.put(KILLSWITCHEND_CHAR_3, "00");
-
-  // set lockdown variable ON
-  EEPROM.put(LOCKDOWNENABLED_BOOL_1, true);
-
-  char message[122];
+    // store primary variables (except Follow) in saved state variables
+    EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
+    EEPROM.put(GEOFENCEENABLED_BOOL_SAVED_1, geofenceEnabled);
+    EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+    EEPROM.put(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
+    EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+    EEPROM.put(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
+    EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
+    EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
+    EEPROM.get(GEOFENCESTART_CHAR_3, geofenceStart);
+    EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
+    EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
+    EEPROM.put(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
+    EEPROM.get(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
+    EEPROM.put(KILLSWITCHENABLED_BOOL_SAVED_1, killSwitchEnabled);
+    EEPROM.get(KILLSWITCHSTART_CHAR_3, killSwitchStart);
+    EEPROM.put(KILLSWITCHSTART_CHAR_SAVED_3, killSwitchStart);
+    EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
+    EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
+  
+    // set primary variables (except Follow) to enabled, always on, etc. and use radius = 500
+    // and set fence Home to current location
+    
+    EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
+    getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
+    EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+    EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+    strcpy_P(geofenceRadius, PSTR("500"));
+    EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
+    EEPROM.put(GEOFENCESTART_CHAR_3, "00");
+    EEPROM.put(GEOFENCEEND_CHAR_3, "00");
+    EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
+    EEPROM.put(KILLSWITCHSTART_CHAR_3, "00");
+    EEPROM.put(KILLSWITCHEND_CHAR_3, "00");
+  
+    // set lockdown variable ON
+    EEPROM.put(LOCKDOWNENABLED_BOOL_1, true);
+  }
 
   // send SMS with new geofence home
   strcpy_P(message, PSTR("Lockdown: Enabled\\nRadius: "));
@@ -600,43 +576,57 @@ bool handleLockReq(char* smsSender) {
 }
 
 bool handleUnlockReq(char* smsSender) {
-  bool geofenceEnabled;
+
+  char message[123];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
-  char geofenceStart[3];
-  char geofenceEnd[3];
-  bool killSwitchEnabled;
-  char killSwitchStart[3];
-  char killSwitchEnd[3];
+  bool lockdownEnabled;
 
-  // put saved state variables (except Follow) back into primary variables
-  EEPROM.get(GEOFENCEENABLED_BOOL_SAVED_1, geofenceEnabled);
-  EEPROM.put(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
-  EEPROM.get(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
-  EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
-  EEPROM.get(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
-  EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-  EEPROM.get(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
-  EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
-  EEPROM.get(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
-  EEPROM.put(GEOFENCESTART_CHAR_3, geofenceStart);
-  EEPROM.get(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
-  EEPROM.put(GEOFENCEEND_CHAR_3, geofenceEnd);
-  EEPROM.get(KILLSWITCHENABLED_BOOL_SAVED_1, killSwitchEnabled);
-  EEPROM.put(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
-  EEPROM.get(KILLSWITCHSTART_CHAR_SAVED_3, killSwitchStart);
-  EEPROM.put(KILLSWITCHSTART_CHAR_3, killSwitchStart);
-  EEPROM.get(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
-  EEPROM.put(KILLSWITCHEND_CHAR_3, killSwitchEnd);
+  // check if lockdown is ALREADY DISabled
+  EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
 
-  // set lockdown variable OFF
-  EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
-
-  char message[101];
+  if (!lockdownEnabled) {
+    EEPROM.get(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
+    EEPROM.get(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
+    EEPROM.get(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
+  }
+  else {  
+    bool geofenceEnabled;
+    char geofenceStart[3];
+    char geofenceEnd[3];
+    bool killSwitchEnabled;
+    char killSwitchStart[3];
+    char killSwitchEnd[3];
+  
+    // put saved state variables (except Follow) back into primary variables
+    EEPROM.get(GEOFENCEENABLED_BOOL_SAVED_1, geofenceEnabled);
+    EEPROM.put(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
+    EEPROM.get(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
+    EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+    EEPROM.get(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
+    EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+    EEPROM.get(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
+    EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
+    EEPROM.get(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
+    EEPROM.put(GEOFENCESTART_CHAR_3, geofenceStart);
+    EEPROM.get(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
+    EEPROM.put(GEOFENCEEND_CHAR_3, geofenceEnd);
+    EEPROM.get(KILLSWITCHENABLED_BOOL_SAVED_1, killSwitchEnabled);
+    EEPROM.put(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
+    EEPROM.get(KILLSWITCHSTART_CHAR_SAVED_3, killSwitchStart);
+    EEPROM.put(KILLSWITCHSTART_CHAR_3, killSwitchStart);
+    EEPROM.get(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
+    EEPROM.put(KILLSWITCHEND_CHAR_3, killSwitchEnd);
+  
+    // set lockdown variable OFF
+    EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
+  }
 
   // send SMS with original geofenceHome
-  strcpy_P(message, PSTR("Lockdown: Disabled (previous settings restored)\\nHome: google.com/search?q="));
+  strcpy_P(message, PSTR("Lockdown: Disabled\\nRadius: "));
+  strcat(message, geofenceRadius);
+  strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
