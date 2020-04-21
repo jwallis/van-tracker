@@ -136,8 +136,10 @@ volatile bool killSwitchOnVolatile = false;
 volatile bool startAttemptedWhileKillSwitchOnVolatile = false;
 
 void setup() {
-#ifdef VAN_PROD
+
   pinSetup();
+
+#ifdef VAN_PROD
   setupSimCom();
   waitUntilSMSReady();
   waitUntilNetworkConnected();
@@ -155,7 +157,6 @@ void setup() {
 #endif
 
 #ifdef VAN_TEST
-  pinSetup();
   setupSerial();
   setupSimCom();
   waitUntilSMSReady();
@@ -335,7 +336,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use \"follow enable\" to receive rapid location updates"));
+    sendSMS(ownerPhoneNumber, F("Use \"follow enable\" to receive rapid location updates (\"follow disable\" to stop)"));
   }
 
   lastGeofenceWarningMinute = getCurrentMinuteInt();
@@ -1783,13 +1784,13 @@ void handleSerialInput(String command) {
   char* temp = command.c_str();
 
   if (strcmp_P(temp, PSTR("g")) == 0) {
-        getEEPROM();
+    getEEPROM();
   }
   if (strcmp_P(temp, PSTR("p")) == 0) {
-        putEEPROM();
+    putEEPROM();
   }
   if (strcmp_P(temp, PSTR("w")) == 0) {
-        watchDog();
+    watchDog();
   }
 
 // for SERIAL TUBE:
