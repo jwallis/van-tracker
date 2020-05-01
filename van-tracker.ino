@@ -249,9 +249,9 @@ void watchDogForKillSwitch() {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-    if (sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch enabled"))) {
-      startAttemptedWhileKillSwitchOnVolatile = false;
-    }
+    // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
+    sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch enabled"));
+    startAttemptedWhileKillSwitchOnVolatile = false;
   }
 }
 
@@ -970,7 +970,7 @@ void setGPS(bool tf) {
         debugBlink(1,10);
         return;
       }
-      delay(1000);
+      delay(2000);
     }
     debugBlink(1,9);
     debugPrintln(F("Failed to turn off GPS"));
@@ -1015,7 +1015,7 @@ void setGPS(bool tf) {
   char currentLon[12];
 
   // wait up to 90s to get GPS fix
-  for (int j = 1; j < 45; j++) {
+  for (int j = 0; j < 23; j++) {
     if (fona.GPSstatus() >= 2) {
       debugBlink(1,8);
 
@@ -1025,7 +1025,7 @@ void setGPS(bool tf) {
       getGPSLatLon(currentLat, currentLon);
       return;
     }
-    delay(2000);
+    delay(4000);
   }
 
   // no fix, give up
@@ -1083,14 +1083,14 @@ void getTime(char* currentTimeStr) {
 //SMS
 
 void deleteSMS(uint8_t msg_number) {
-  for (int i = 2; i < 40; i++) {
+  for (int i = 0; i < 5; i++) {
     debugPrintln(F("  Attempting to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
       debugPrintln(F("  Success deleting SMS"));
       debugBlink(1,4);
       return;
     }
-    delay(1000);
+    delay(2000);
   }
   debugPrintln(F("  Failed to delete SMS"));
   debugBlink(1,3);
