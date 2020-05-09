@@ -444,8 +444,8 @@ void handleSMSInput() {
     if (strstr_P(smsValue, PSTR("devkey"))) {
       // special: we want to pass the case-sensitive version to handleDevKeyReq because the devKey is case sensitive
       getSMSValue(smsSlotNumber, smsValue);
-      if (handleDevKeyReq(smsSender, smsValue))
-        deleteSMS(smsSlotNumber);
+      handleDevKeyReq(smsSender, smsValue);
+      deleteSMS(smsSlotNumber);
       continue;
     }
 
@@ -462,9 +462,8 @@ void handleSMSInput() {
     }
 
     if (strcmp_P(smsValue, PSTR("deleteallmessages")) == 0) {
-      if (handleDeleteAllMessagesReq())
-        deleteSMS(smsSlotNumber);
-      return;     // notice this is return not continue!
+      fona.deleteAllSMS();
+      return;  // notice this is RETURN not continue!
     }
 
     // default
@@ -869,13 +868,6 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, message);
 }
 
-bool handleDeleteAllMessagesReq() {
-  for (int8_t i = 0; i < 10; i++) {
-    deleteSMS(i);
-  }
-  return true;
-}
-
 bool handleDevKeyReq(char* smsSender, char* smsValue) {
 
   // special: smsValue is still case-sensitive.
@@ -1256,12 +1248,7 @@ void reportAndRestart(short shortBlinks, char* message) {
 }
 
 void restartSystem() {
-  // reset sim7000 module.  From the sim808 HW manual (assumably the same for sim7000):
-  //    Normal power off by sending the AT command “AT+CPOWD=1” or using the PWRKEY.
-  //    The power management unit shuts down the power supply for the baseband part of the
-  //    module, and only the power supply for the RTC is remained. Software is not active. The
-  //    serial port is not accessible. Power supply (connected to VBAT) remains applied.
-  sendRawCommand(F("AT+CPOWD=1"));
+  sendRawCommand(F("AT+CFUN=1,1"));
   delay(15000);
 
   // reconnect to SimCom
@@ -1468,7 +1455,7 @@ void pinSetup() {
   pinMode(GEOFENCE_LED_PIN, OUTPUT);
   pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
   pinMode(KILL_SWITCH_LED_PIN, OUTPUT);
-  pinMode(DEBUG_PIN, OUTPUT);  // for debugging only
+  pinMode(DEBUG_PIN, OUTPUT);
 }
 
 void starterISR() {
