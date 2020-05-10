@@ -143,6 +143,7 @@ void setup() {
   setupSimCom();
   waitUntilSMSReady();
   waitUntilNetworkConnected();
+  checkForDeadMessages();
 #endif
   
 #ifdef NEW_HARDWARE_ONLY
@@ -161,6 +162,7 @@ void setup() {
   setupSimCom();
   waitUntilSMSReady();
   waitUntilNetworkConnected();
+  checkForDeadMessages();
 #endif
 }
 
@@ -411,11 +413,20 @@ void handleSMSInput() {
       continue;
     }
 
+    if (strstr_P(smsValue, PSTR("both"))) {
+      if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
+        continue;
+
+      if (handleBothReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }    
+
     if (strstr_P(smsValue, PSTR("kill"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
-      if (handleKillSwitchReq(smsSender, smsValue))
+      if (handleKillSwitchReq(smsSender, smsValue, false))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -424,7 +435,7 @@ void handleSMSInput() {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
-      if (handleGeofenceReq(smsSender, smsValue))
+      if (handleGeofenceReq(smsSender, smsValue, false))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -698,39 +709,23 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));  
 }
 
-bool handleKillSwitchReq(char* smsSender, char* smsValue) {
+bool handleBothReq(char* smsSender, char* smsValue) {
+  return handleKillSwitchReq(smsSender, smsValue, true) && handleGeofenceReq(smsSender, smsValue, true);
+}
+
+bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
   char message[65] = "";
 
+  bool validMessage = false;
   bool killSwitchEnabled;
   char killSwitchStart[3];
   char killSwitchEnd[3];
   EEPROM.get(KILLSWITCHSTART_CHAR_3, killSwitchStart);
   EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
 
-  if (strstr_P(smsValue, PSTR("enable"))) {
-    EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
-    message[0] = '1';
-  }
-  if (strstr_P(smsValue, PSTR("disable"))) {
-    EEPROM.put(KILLSWITCHENABLED_BOOL_1, false);
-    message[0] = '1';
-  }
+  validMessage = setEnableAndHours(smsValue, KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3, killSwitchEnabled, killSwitchStart, killSwitchEnd);
 
-  EEPROM.get(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
-
-  if (strstr_P(smsValue, PSTR("hours"))) {
-    if (setHoursFromSMS(smsValue, killSwitchStart, killSwitchEnd)) {
-      // make 4 => 04
-      insertZero(killSwitchStart);
-      insertZero(killSwitchEnd);
-      
-      EEPROM.put(KILLSWITCHSTART_CHAR_3, killSwitchStart);
-      EEPROM.put(KILLSWITCHEND_CHAR_3, killSwitchEnd);
-      message[0] = '1';
-    }
-  }
-
-  if (message[0] || strstr_P(smsValue, PSTR("status"))) {
+  if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     //  Yay only 2k of RAM
     strcpy_P(message, PSTR("Kill: "));
     if (killSwitchEnabled)
@@ -749,13 +744,26 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"kill\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)"));
+    // This whole section is not good because it's tied to how handleGeofenceReq() works in its final ELSE clause.
+    // "both" was an afterthought, so this section was a retrofit.
+    // The point is, we handle responding to invalid messages for the "both" command here in handleKillSwitchReq()
+
+    strcpy_P(message, PSTR("Try \""));
+    if (alternateSMSOnFailure) {
+      strcat_P(message, PSTR("both"));
+    }
+    else {
+      strcat_P(message, PSTR("kill"));
+    }
+    strcat_P(message, PSTR("\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)"));
+    return sendSMS(smsSender, message);
   }
 }
 
-bool handleGeofenceReq(char* smsSender, char* smsValue) {
+bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
   char message[135] = "";
 
+  bool validMessage = false;
   bool geofenceEnabled;
   char geofenceStart[3];
   char geofenceEnd[3];
@@ -768,47 +776,26 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
 
-
-  if (strstr_P(smsValue, PSTR("enable"))) {
-    EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
-    message[0] = '1';
-  }
-  if (strstr_P(smsValue, PSTR("disable"))) {
-    EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
-    message[0] = '1';
-  }
-  
-  EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
+  validMessage = setEnableAndHours(smsValue, GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3, geofenceEnabled, geofenceStart, geofenceEnd);  
   
   if (strstr_P(smsValue, PSTR("radius"))) {
     geofenceRadius[0] = '\0';
     if (getNumberFromString(smsValue, geofenceRadius, 7)) {
       EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
-      message[0] = '1';
+      validMessage = true;
     }
   }
   if (strstr_P(smsValue, PSTR("home"))) {
     getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    message[0] = '1';
-  }
-  if (strstr_P(smsValue, PSTR("hours"))) {
-    if (setHoursFromSMS(smsValue, geofenceStart, geofenceEnd)) {
-      // make 4 => 04
-      insertZero(geofenceStart);
-      insertZero(geofenceEnd);
-      
-      EEPROM.put(GEOFENCESTART_CHAR_3, geofenceStart);
-      EEPROM.put(GEOFENCEEND_CHAR_3, geofenceEnd);
-      message[0] = '1';
-    }
+    validMessage = true;
   }
 
   // reset this so the "follow" message will be sent when the fence is broken
   lastGeofenceWarningMinute = -1;
 
-  if (message[0] || strstr_P(smsValue, PSTR("status"))) {
+  if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     //    Yay only 2k of RAM, doing this all piecemeal (instead of big strings as is done in this comment) saves 54 bytes!!!!!!!
     //    if (geofenceEnabled)
     //      sprintf(message, "ENABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
@@ -838,7 +825,16 @@ bool handleGeofenceReq(char* smsSender, char* smsValue) {
     return sendSMS(smsSender, message);
   }
   else {
-    return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 300 (300 feet)"));
+    // This whole section is not good because it's tied to how handleKillSwitchReq() works in its final ELSE clause.
+    // "both" was an afterthought, so this section was a retrofit.
+    // The point is, we handle responding to invalid messages for the "both" command not here, but up in handleKillSwitchReq()
+
+    if (alternateSMSOnFailure) {
+      return true;
+    }
+    else {
+      return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 300 (300 feet)"));
+    }
   }
 }
 
@@ -1074,6 +1070,18 @@ void getTime(char* currentTimeStr) {
 ////////////////////////////////
 //SMS
 
+void checkForDeadMessages() {
+  // sim7000 can only hold 10 messages, it cannot see the rest until those 10 are processed.  That means if we are debugging
+  // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
+  // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
+  // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
+  short numberOfSMSs = fona.getNumSMS();
+  if (numberOfSMSs == 10) {
+    fona.deleteAllSMS();
+    debugPrintln(F("SMS storage FULL. Deleting ALL SMS"));
+  }
+}
+
 void deleteSMS(uint8_t msg_number) {
   for (int i = 0; i < 5; i++) {
     debugPrintln(F("  Attempting to delete SMS"));
@@ -1189,6 +1197,42 @@ bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ');
 
   return (hoursStart[0] && hoursEnd[0]);
+}
+
+bool setEnableAndHours(char* smsValue, short eepromEnabled, short eepromStart, short eepromEnd, bool &enabled, char* hoursStart, char* hoursEnd) {
+  bool validMessage = false;
+
+  if (strstr_P(smsValue, PSTR("enable"))) {
+    EEPROM.put(eepromEnabled, true);
+    validMessage = true;
+  }
+  if (strstr_P(smsValue, PSTR("disable"))) {
+    EEPROM.put(eepromEnabled, false);
+    validMessage = true;
+  }
+  
+  EEPROM.get(eepromEnabled, enabled);
+  
+  if (strstr_P(smsValue, PSTR("hours"))) {
+    if (setHoursFromSMS(smsValue, hoursStart, hoursEnd)) {
+      // make 4 => 04
+      insertZero(hoursStart);
+      insertZero(hoursEnd);
+      
+      writeCStringToEEPROM(eepromStart, hoursStart);
+      writeCStringToEEPROM(eepromEnd, hoursEnd);
+      validMessage = true;
+    }
+  }
+  return validMessage;
+}
+
+void writeCStringToEEPROM(int eepromAddress, char* data) {
+  int i=0;
+  for (;data[i]; i++) {
+    EEPROM.put(eepromAddress+i, data[i]);
+  }
+  EEPROM.put(eepromAddress+i, '\0');
 }
 
 bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
@@ -1852,12 +1896,12 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   }
 
   if (strstr_P(smsValue, PSTR("kill"))) {
-    handleKillSwitchReq(smsSender, smsValue);
+    handleKillSwitchReq(smsSender, smsValue, false);
     return;
   }
 
   if (strstr_P(smsValue, PSTR("fence"))) {
-    handleGeofenceReq(smsSender, smsValue);
+    handleGeofenceReq(smsSender, smsValue, false);
     return;
   }
 
