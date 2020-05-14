@@ -13,7 +13,7 @@ Blink debug codes - the Arduino Nono will blink these codes during operation:
 Basic info codes (0 longs followed by THIS MANY shorts):
   1 = about to check inbound SMSs
   2 = about to execute watchdog processes
-  5 = connected to SimCom successfully at startup
+  5 = connected to SimCom successfully
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = failed  sending SMS - will also be followed by more blinking, see below
@@ -141,8 +141,7 @@ void setup() {
 
 #ifdef VAN_PROD
   setupSimCom();
-  waitUntilSMSReady();
-  waitUntilNetworkConnected();
+  waitUntilNetworkConnected(600);
   checkForDeadMessages();
 #endif
   
@@ -161,8 +160,7 @@ void setup() {
 #ifdef VAN_TEST
   setupSerial();
   setupSimCom();
-  waitUntilSMSReady();
-  waitUntilNetworkConnected();
+  waitUntilNetworkConnected(600);
   checkForDeadMessages();
 #endif
 }
@@ -1277,7 +1275,7 @@ void reportAndRestart(short shortBlinks, const __FlashStringHelper* message) {
 
   debugPrintln(message);
   sendSMS(ownerPhoneNumber, message);
-  restartSystem();
+  resetSystem();
 }
 
 void reportAndRestart(short shortBlinks, char* message) {
@@ -1289,17 +1287,23 @@ void reportAndRestart(short shortBlinks, char* message) {
 
   debugPrintln(message);
   sendSMS(ownerPhoneNumber, message);
-  restartSystem();
+  resetSystem();
 }
 
-void restartSystem() {
-  sendRawCommand(F("AT+CFUN=1,1"));
-  delay(15000);
+void resetSystem() {
+  setSimComFuntionality(1);
+  delay(2000);
 
   // reconnect to SimCom
   setupSimCom();
-  waitUntilSMSReady();
-  waitUntilNetworkConnected();
+  waitUntilNetworkConnected(120);
+}
+
+void setSimComFuntionality(short func) {
+  if (func == 0)
+    sendRawCommand(F("AT+CFUN=0,0"));
+  if (func == 1)
+    sendRawCommand(F("AT+CFUN=1,1"));
 }
 
 void insertZero(char *in) {
@@ -1562,35 +1566,31 @@ void setupSimCom() {
 
   SimComSerial->begin(9600);
 
-  // TBD make this loop for up to 90s
-  if (! fona.beginSIM7000(*SimComSerial)) {
-    reportAndRestart(1, F("Connect to SimCom failed, restarting"));
-  }
-  debugBlink(0,5);
-  debugPrintln(F("SimCom OK"));
-}
-
-void waitUntilSMSReady() {
-  debugPrintln(F("Connect to SMS"));
+  fona.beginSIM7000(*SimComSerial);
   
   for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
-      debugPrintln(F("\nSMS OK"));
+      debugPrintln(F("\nSimCom OK"));
+      debugBlink(0,5);
       return;
     }
     delay(2000);
   }
-  reportAndRestart(2, F("Connect to SMS failed, restarting"));
+  reportAndRestart(2, F("Connect to SimCom failed, restarting"));
 }
 
-void waitUntilNetworkConnected() {
+void waitUntilNetworkConnected(short secondsToWait) {
   debugPrintln(F("Connect to network"));
   int netConn;
+
+  fona.setNetworkSettings(APN, F(""), F(""));
+
+  // we're waiting 2s each loop
+  secondsToWait = secondsToWait/2;
   
-  for (int i = 0; i < 60; i++) {
+  for (int i = 0; i < secondsToWait; i++) {
     debugPrint(F("."));
-    fona.setNetworkSettings(APN, F(""), F(""));
     netConn = fona.getNetworkStatusSIM7000();
     
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
