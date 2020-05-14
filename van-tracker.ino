@@ -13,7 +13,8 @@ Blink debug codes - the Arduino Nono will blink these codes during operation:
 Basic info codes (0 longs followed by THIS MANY shorts):
   1 = about to check inbound SMSs
   2 = about to execute watchdog processes
-  5 = connected to SimCom successfully
+  3 = scheduled SimCom chip reset
+  4 = connected to SimCom successfully
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = failed  sending SMS - will also be followed by more blinking, see below
@@ -50,8 +51,9 @@ Error codes in failure to send SMS (3 longs followed by THIS MANY shorts) - see 
     B. Send a text message to your device: Use the command "devkey set ________" where ________ is the 8-digit Device Key you got in step A
   10 = Unknown
 
-Network connection failure in waitUntilNetworkConnected() (4 long followed by THIS MANY shorts):
+Connection failure either to SimCom chip or cellular network (4 long followed by THIS MANY shorts):
   This happens before restarting, which will have its own blink code, see above
+    1 = Failed to connect to SimCom chip
     2 = Not registered, trying to attach or searching an operator to register to
     3 = Registration denied
     4 = Unknown
@@ -127,6 +129,15 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define SERVERNAME_CHAR_24                116
 #define SERVERPORT_INT_2                  140
 
+
+// simComConnectionStatus
+// 0 = connected to cell network
+// 1 = Failed to connect to SimCom chip
+// 2 = Not registered, trying to attach or searching an operator to register to
+// 3 = Registration denied
+// 4 = Unknown
+short simComConnectionStatus = 2;
+
 short totalErrors = 0;
 char lastError[2] = "0";
 short lastGPSQueryMinute = -1;
@@ -171,18 +182,27 @@ void loop() {
   flushSimCom();
 #endif
 
-  checkSMSInput();
-  watchDog();
-  delay(500);
-}
+  // 0 is good
+  // > 0 is bad
+  if (simComConnectionStatus > 0) {
+    debugBlink(4,simComConnectionStatus);
+    delay(2000);
 
-void watchDog() {
-  debugBlink(0,2);
+    debugBlink(0,2);
+  }
+  else {
+    debugBlink(0,1);
+    checkSMSInput();
+
+    debugBlink(0,2);
+    watchDogForGeofence();
+  }
 
   watchDogForKillSwitch();
-  watchDogForGeofence();
   watchDogForTurnOffGPS();
   watchDogForErrors();
+
+  delay(500);
 }
 
 void watchDogForErrors() {
@@ -345,8 +365,6 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 
 void checkSMSInput() {
   int8_t numberOfSMSs;
-
-  debugBlink(0,1);
 
   for (int i = 0; i < 5; i++) {
     numberOfSMSs = fona.getNumSMS();
@@ -1099,6 +1117,9 @@ void deleteSMS(uint8_t msg_number) {
 
 bool sendSMS(char* send_to, char* message) {
 
+  if (simComConnectionStatus > 0)
+    return false;
+
   // Example of hologramSMSString: "Saaaabbbb+15556667777 Hello, SMS over IP World!"
   // 'S' (tells Hologram that it's an SMS):               1
   // devKey:                                              8
@@ -1291,17 +1312,17 @@ void reportAndRestart(short shortBlinks, char* message) {
 }
 
 void resetSystem() {
+  debugBlink(0,3);
   setSimComFuntionality(1);
-  delay(2000);
-
-  // reconnect to SimCom
   setupSimCom();
   waitUntilNetworkConnected(120);
 }
 
 void setSimComFuntionality(short func) {
-  if (func == 0)
+  if (func == 0) {
+    setGPS(false);
     sendRawCommand(F("AT+CFUN=0,0"));
+  }
   if (func == 1)
     sendRawCommand(F("AT+CFUN=1,1"));
 }
@@ -1560,28 +1581,33 @@ void initBaud() {
 #endif
 
 void setupSimCom() {
-  debugPrintln(F("Connect to SimCom"));
+  debugPrint(F("Connect to SimCom"));
   // let SimCom module start up before we try to connect
   delay(5000);
 
   SimComSerial->begin(9600);
-
   fona.beginSIM7000(*SimComSerial);
   
-  for (int i = 0; i < 60; i++) {
+  for (int i = 0; i < 30; i++) {
     debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
       debugPrintln(F("\nSimCom OK"));
-      debugBlink(0,5);
+      debugBlink(0,4);
       return;
     }
     delay(2000);
   }
-  reportAndRestart(2, F("Connect to SimCom failed, restarting"));
+  simComConnectionStatus = 1;
+  setSimComFuntionality(0);
 }
 
 void waitUntilNetworkConnected(short secondsToWait) {
-  debugPrintln(F("Connect to network"));
+
+  // if we can't connect to SimCom, don't bother trying to connect to cell network
+  if (simComConnectionStatus == 1)
+    return;
+
+  debugPrint(F("Connect to network"));
   int netConn;
 
   fona.setNetworkSettings(APN, F(""), F(""));
@@ -1601,6 +1627,7 @@ void waitUntilNetworkConnected(short secondsToWait) {
     // 5 Registered, roaming
     if (netConn == 1 || netConn == 5) {
       debugPrintln(F("\nConnected"));
+      simComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
       fona.TCPshut();  // just in case GPRS is still on for some reason, save power
       return;
@@ -1608,8 +1635,8 @@ void waitUntilNetworkConnected(short secondsToWait) {
     delay(2000);
   }
 
-  debugBlink(4, netConn);
-  reportAndRestart(2, F("Connect to network failed, restarting"));
+  simComConnectionStatus = netConn;
+  setSimComFuntionality(0);
 }
 
 #ifdef NEW_HARDWARE_ONLY
