@@ -153,8 +153,9 @@ void setup() {
   initEEPROM();
   initSimCom();
   debugPrintln(F("\n\nPlease update #ifdefs and restart."));
-  debugBlink(5,0);
-  while (1) {}
+  while (1) {
+    debugBlink(1,0);
+  }
 #endif
 
 #ifdef VAN_TEST
@@ -875,7 +876,7 @@ bool handleDevKeyReq(char* smsSender, char* smsValue) {
   char devKey[9] = "";
 
   // set devKey
-  if (strstr_P(tempStr, PSTR("set"))) {
+  if (strstr_P(tempStr, PSTR("devkey set"))) {
     getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8); // max_length
     EEPROM.put(DEVKEY_CHAR_9, devKey);
 
