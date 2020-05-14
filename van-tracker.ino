@@ -952,10 +952,10 @@ void getSMSValue(int8_t smsSlotNumber, char* smsValue) {
 void setGPS(bool tf) {
   // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
-    fona.enableGPS(false);
+    fona.enableGPSSIM7000(false);
 
     for (int k = 0; k < 3; k++) {
-      if (fona.GPSstatus() == 0) {
+      if (fona.GPSstatusSIM7000() == 0) {
         debugBlink(1,10);
         return;
       }
@@ -971,21 +971,21 @@ void setGPS(bool tf) {
   //  1 = no GPS fix
   //  2 = 2D fix
   //  3 = 3D fix
-  if (fona.GPSstatus() >= 2)
+  if (fona.GPSstatusSIM7000() >= 2)
     return;
 
   int8_t status;
 
   // Keep trying to get a valid (non-error) response. Maybe we should turn off/on?
   for (int i = 1; i < 30; i++) {
-    if (fona.GPSstatus() >= 0) {
+    if (fona.GPSstatusSIM7000() >= 0) {
       break;
     }
     delay(2000);
   }
 
   // error, give up
-  if (fona.GPSstatus() < 0) {
+  if (fona.GPSstatusSIM7000() < 0) {
     totalErrors++;
     lastError[0] = '5';
     debugPrintln(F("Failed to turn on GPS"));
@@ -994,8 +994,8 @@ void setGPS(bool tf) {
   }
 
   // off, turn on
-  if (fona.GPSstatus() == 0) {
-    fona.enableGPS(true);
+  if (fona.GPSstatusSIM7000() == 0) {
+    fona.enableGPSSIM7000(true);
     delay(4000);
   }
 
@@ -1005,7 +1005,7 @@ void setGPS(bool tf) {
 
   // wait up to 90s to get GPS fix
   for (int j = 0; j < 23; j++) {
-    if (fona.GPSstatus() >= 2) {
+    if (fona.GPSstatusSIM7000() >= 2) {
       debugBlink(1,8);
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
@@ -1018,7 +1018,7 @@ void setGPS(bool tf) {
   }
 
   // no fix, give up
-  if (fona.GPSstatus() < 2) {
+  if (fona.GPSstatusSIM7000() < 2) {
     totalErrors++;
     lastError[0] = '6';
     debugPrintln(F("Failed to get GPS fix"));
@@ -1536,11 +1536,11 @@ void initBaud() {
   debugPrintln(F("Trying to connect at 9600"));
   SimComSerial->begin(9600);
 
-  if (! fona.begin(*SimComSerial)) {
+  if (! fona.beginSIM7000(*SimComSerial)) {
     debugPrintln(F("Trying to connect at 115200"));
     SimComSerial->begin(115200);
     
-    if (! fona.begin(*SimComSerial)) {
+    if (! fona.beginSIM7000(*SimComSerial)) {
       debugPrintln(F("ERROR: Could not connect at 9600 or 115200"));
       return;
     } else {
@@ -1563,7 +1563,7 @@ void setupSimCom() {
   SimComSerial->begin(9600);
 
   // TBD make this loop for up to 90s
-  if (! fona.begin(*SimComSerial)) {
+  if (! fona.beginSIM7000(*SimComSerial)) {
     reportAndRestart(1, F("Connect to SimCom failed, restarting"));
   }
   debugBlink(0,5);
@@ -1591,7 +1591,7 @@ void waitUntilNetworkConnected() {
   for (int i = 0; i < 60; i++) {
     debugPrint(F("."));
     fona.setNetworkSettings(APN, F(""), F(""));
-    netConn = fona.getNetworkStatus();
+    netConn = fona.getNetworkStatusSIM7000();
     
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
     // 1 Registered, home
