@@ -215,6 +215,16 @@ void watchDogForReset() {
   }
 }
 
+void resetSystem() {
+  debugBlink(0,3);
+  setSimComFuntionality(1);
+  setupSimCom();
+  waitUntilNetworkConnected(120);
+
+  lastRestartHour = getCurrentHourInt();
+  lastRestartMinute = getCurrentMinuteInt();
+}
+
 void watchDogForTurnOffGPS() {
   // shut down GPS module after 10 minutes of inactivity
 
@@ -236,31 +246,6 @@ void watchDogForTurnOffGPS() {
       setGPS(false);
       lastGPSQueryMinute = -1;
   }
-}
-
-int getCurrentMinuteInt() {
-  char currentTimeStr[23];
-  char currentMinuteStr[3];
-  
-  getTime(currentTimeStr);
-
-  currentMinuteStr[0] = currentTimeStr[13];
-  currentMinuteStr[1] = currentTimeStr[14];
-  currentMinuteStr[2] = '\0';
-  return atoi(currentMinuteStr);
-}
-
-int getCurrentHourInt() {
-  char currentTimeStr[23];
-  char currentHourStr[3];
-  
-  getTime(currentTimeStr);
-
-  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
-  currentHourStr[0] = currentTimeStr[10];
-  currentHourStr[1] = currentTimeStr[11];
-  currentHourStr[2] = '\0';
-  return atoi(currentHourStr);
 }
 
 void watchDogForKillSwitch() {
@@ -912,42 +897,6 @@ bool handleUnknownReq(char* smsSender) {
     return true;
 }
 
-bool isSMSSlotFilled(int8_t smsSlotNumber) {
-  char smsSender[15];
-
-  if (fona.getSMSSender(smsSlotNumber, smsSender, 15)) {
-    return true;
-  }
-  return false;
-}
-
-void getSMSSender(int8_t smsSlotNumber, char* smsSender) {
-  for (int i = 0; i < 3; i++) {
-    if (fona.getSMSSender(smsSlotNumber, smsSender, 15))
-      break;
-    debugPrintln(F("  Failed getting SMS sender"));
-    delay(1000);
-  }
-}
-
-void getSMSValue(int8_t smsSlotNumber, char* smsValue) {
-  uint16_t smsValueLength;
-
-  for (int i = 0; i < 3; i++) {
-    if (fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength))
-      break;
-    debugPrintln(F("  Failed getting SMS value"));
-    delay(1000);
-  }
-}
-
-
-
-
-///////////////////////////////////////////////////////////////////////////////////////////
-//BUSINESS FUNCTIONS
-///////////////////////////////////////////////////////////////////////////////////////////
-
 
 ////////////////////////////////
 //GPS
@@ -1050,6 +999,55 @@ bool getGPSLatLon(char* latitude, char* longitude) {
   return false;
 }
 
+bool outsideGeofence(char* lat1Str, char* lon1Str) {
+  if (lat1Str[0] == '\0') {
+    return false;
+  }
+
+  char geofenceRadius[7];
+  char geofenceHomeLat[12];
+  char geofenceHomeLon[12];
+  EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
+  EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+  EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+
+  float geofenceRadiusFloat = atof(geofenceRadius);
+  float lat1Float = atof(lat1Str);
+  float lon1Float = atof(lon1Str);
+  float lat2Float = atof(geofenceHomeLat);
+  float lon2Float = atof(geofenceHomeLon);
+
+  // Variables
+  float dist_calc = 0;
+  float dist_calc2 = 0;
+  float dilat = 0;
+  float dilon = 0;
+
+  // Calculations
+  dilat  = radians(lat2Float - lat1Float);
+  lat1Float = radians(lat1Float);
+  lat2Float = radians(lat2Float);
+  dilon = radians((lon2Float) - (lon1Float));
+
+  dist_calc = (sin(dilat / 2.0) * sin(dilat / 2.0));
+  dist_calc2 = cos(lat1Float);
+  dist_calc2 *= cos(lat2Float);
+  dist_calc2 *= sin(dilon / 2.0);
+  dist_calc2 *= sin(dilon / 2.0);
+  dist_calc += dist_calc2;
+
+  dist_calc = (2 * atan2(sqrt(dist_calc), sqrt(1.0 - dist_calc)));
+  dist_calc *= 20902231.64; //Converting to feet
+
+  debugPrint(F("Distance in feet: "));
+  debugPrintln(dist_calc, 2);
+
+  return dist_calc > geofenceRadiusFloat;
+}
+
+////////////////////////////////
+//Time
+
 void getTime(char* currentTimeStr) {
 
   // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes  
@@ -1060,6 +1058,64 @@ void getTime(char* currentTimeStr) {
     delay(1000);
   }
 }
+
+int getCurrentMinuteInt() {
+  char currentTimeStr[23];
+  char currentMinuteStr[3];
+  
+  getTime(currentTimeStr);
+
+  currentMinuteStr[0] = currentTimeStr[13];
+  currentMinuteStr[1] = currentTimeStr[14];
+  currentMinuteStr[2] = '\0';
+  return atoi(currentMinuteStr);
+}
+
+int getCurrentHourInt() {
+  char currentTimeStr[23];
+  char currentHourStr[3];
+  
+  getTime(currentTimeStr);
+
+  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
+  currentHourStr[0] = currentTimeStr[10];
+  currentHourStr[1] = currentTimeStr[11];
+  currentHourStr[2] = '\0';
+  return atoi(currentHourStr);
+}
+
+bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
+  // takes into account both "enabled" option
+  // as well as the "hours" 1am-8am option
+
+  bool enabled;
+  EEPROM.get(eepromEnabled, enabled);
+  if (!enabled)
+    return false;
+
+  char startHour[3];
+  char endHour[3];
+  EEPROM.get(eepromStart, startHour);
+  EEPROM.get(eepromEnd, endHour);
+
+  // if start and end are the same, the fence is ALWAYS on
+  if (strcmp(startHour, endHour) == 0)
+    return true;
+
+  short currentHour = getCurrentHourInt();
+
+  // simple case, current time is between start/end.  Start time is inclusive, end time is exclusive
+  if (currentHour >= atoi(startHour) && currentHour < atoi(endHour))
+    return true;
+
+  // if start time is after end time (23-7 i.e. 11pm-7am), it only has to satisfy one of the conditions.  HOW INTERESTING
+  if (strcmp(startHour, endHour) > 0)
+    if (currentHour >= atoi(startHour) || currentHour < atoi(endHour))
+      return true;
+
+  return false;
+}
+
 
 ////////////////////////////////
 //SMS
@@ -1160,7 +1216,34 @@ bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
   return sendSMS(send_to, message);
 }
 
+bool isSMSSlotFilled(int8_t smsSlotNumber) {
+  char smsSender[15];
 
+  if (fona.getSMSSender(smsSlotNumber, smsSender, 15)) {
+    return true;
+  }
+  return false;
+}
+
+void getSMSSender(int8_t smsSlotNumber, char* smsSender) {
+  for (int i = 0; i < 3; i++) {
+    if (fona.getSMSSender(smsSlotNumber, smsSender, 15))
+      break;
+    debugPrintln(F("  Failed getting SMS sender"));
+    delay(1000);
+  }
+}
+
+void getSMSValue(int8_t smsSlotNumber, char* smsValue) {
+  uint16_t smsValueLength;
+
+  for (int i = 0; i < 3; i++) {
+    if (fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength))
+      break;
+    debugPrintln(F("  Failed getting SMS value"));
+    delay(1000);
+  }
+}
 
 
 
@@ -1228,48 +1311,6 @@ void writeCStringToEEPROM(int eepromAddress, char* data) {
     EEPROM.put(eepromAddress+i, data[i]);
   }
   EEPROM.put(eepromAddress+i, '\0');
-}
-
-bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
-  // takes into account both "enabled" option
-  // as well as the "hours" 1am-8am option
-
-  bool enabled;
-  EEPROM.get(eepromEnabled, enabled);
-  if (!enabled)
-    return false;
-
-  char startHour[3];
-  char endHour[3];
-  EEPROM.get(eepromStart, startHour);
-  EEPROM.get(eepromEnd, endHour);
-
-  // if start and end are the same, the fence is ALWAYS on
-  if (strcmp(startHour, endHour) == 0)
-    return true;
-
-  short currentHour = getCurrentHourInt();
-
-  // simple case, current time is between start/end.  Start time is inclusive, end time is exclusive
-  if (currentHour >= atoi(startHour) && currentHour < atoi(endHour))
-    return true;
-
-  // if start time is after end time (23-7 i.e. 11pm-7am), it only has to satisfy one of the conditions.  HOW INTERESTING
-  if (strcmp(startHour, endHour) > 0)
-    if (currentHour >= atoi(startHour) || currentHour < atoi(endHour))
-      return true;
-
-  return false;
-}
-
-void resetSystem() {
-  debugBlink(0,3);
-  setSimComFuntionality(1);
-  setupSimCom();
-  waitUntilNetworkConnected(120);
-
-  lastRestartHour = getCurrentHourInt();
-  lastRestartMinute = getCurrentMinuteInt();
 }
 
 void setSimComFuntionality(short func) {
@@ -1411,52 +1452,6 @@ bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber,
   return foundOccurrence;
 }
 
-bool outsideGeofence(char* lat1Str, char* lon1Str) {
-  if (lat1Str[0] == '\0') {
-    return false;
-  }
-
-  char geofenceRadius[7];
-  char geofenceHomeLat[12];
-  char geofenceHomeLon[12];
-  EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
-  EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
-  EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-
-  float geofenceRadiusFloat = atof(geofenceRadius);
-  float lat1Float = atof(lat1Str);
-  float lon1Float = atof(lon1Str);
-  float lat2Float = atof(geofenceHomeLat);
-  float lon2Float = atof(geofenceHomeLon);
-
-  // Variables
-  float dist_calc = 0;
-  float dist_calc2 = 0;
-  float dilat = 0;
-  float dilon = 0;
-
-  // Calculations
-  dilat  = radians(lat2Float - lat1Float);
-  lat1Float = radians(lat1Float);
-  lat2Float = radians(lat2Float);
-  dilon = radians((lon2Float) - (lon1Float));
-
-  dist_calc = (sin(dilat / 2.0) * sin(dilat / 2.0));
-  dist_calc2 = cos(lat1Float);
-  dist_calc2 *= cos(lat2Float);
-  dist_calc2 *= sin(dilon / 2.0);
-  dist_calc2 *= sin(dilon / 2.0);
-  dist_calc += dist_calc2;
-
-  dist_calc = (2 * atan2(sqrt(dist_calc), sqrt(1.0 - dist_calc)));
-  dist_calc *= 20902231.64; //Converting to feet
-
-  debugPrint(F("Distance in feet: "));
-  debugPrintln(dist_calc, 2);
-
-  return dist_calc > geofenceRadiusFloat;
-}
-
 void flushSerial() {
   while (Serial.available())
     Serial.read();
@@ -1500,6 +1495,67 @@ void setGeofencePins(bool tf) {
   digitalWrite(GEOFENCE_LED_PIN, tf);
 }
 
+void setupSimCom() {
+  debugPrint(F("Connect to SimCom"));
+  // let SimCom module start up before we try to connect
+  delay(5000);
+
+  SimComSerial->begin(9600);
+  fona.beginSIM7000(*SimComSerial);
+  
+  for (int i = 0; i < 30; i++) {
+    debugPrint(F("."));
+    if (fona.getNumSMS() >= 0) {
+      debugPrintln(F("\nSimCom OK"));
+      debugBlink(0,4);
+      return;
+    }
+    delay(2000);
+  }
+  simComConnectionStatus = 1;
+
+  while (1) {
+    debugBlink(3,simComConnectionStatus);
+  }
+}
+
+void waitUntilNetworkConnected(short secondsToWait) {
+  debugPrint(F("Connect to network"));
+  short netConn;
+
+  fona.setNetworkSettings(APN, F(""), F(""));
+
+  // we're waiting 2s each loop
+  secondsToWait = secondsToWait/2;
+  
+  for (int i = 0; i < secondsToWait; i++) {
+    debugPrint(F("."));
+    netConn = fona.getNetworkStatusSIM7000();
+    
+    // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
+    // 1 Registered, home
+    // 2 Not registered, trying to attach or searching an operator to register to
+    // 3 Registration denied
+    // 4 Unknown
+    // 5 Registered, roaming
+    if (netConn == 1 || netConn == 5) {
+      debugPrintln(F("\nConnected"));
+      simComConnectionStatus = 0;
+      fona.setNetworkSettings(APN, F(""), F(""));
+      fona.TCPshut();  // just in case GPRS is still on for some reason, save power
+      return;
+    }
+    delay(2000);
+  }
+
+  // 0 is good, so set it to 2 (not registered)
+  if (netConn == 0)
+    netConn = 2;
+
+  simComConnectionStatus = netConn;
+  setSimComFuntionality(0);
+}
+
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY
 void setupSerial() {
   while (!Serial);
@@ -1532,66 +1588,7 @@ void initBaud() {
     return;
   }
 }
-#endif
 
-void setupSimCom() {
-  debugPrint(F("Connect to SimCom"));
-  // let SimCom module start up before we try to connect
-  delay(5000);
-
-  SimComSerial->begin(9600);
-  fona.beginSIM7000(*SimComSerial);
-  
-  for (int i = 0; i < 30; i++) {
-    debugPrint(F("."));
-    if (fona.getNumSMS() >= 0) {
-      debugPrintln(F("\nSimCom OK"));
-      debugBlink(0,4);
-      return;
-    }
-    delay(2000);
-  }
-  simComConnectionStatus = 1;
-
-  while (1) {
-    debugBlink(3,simComConnectionStatus);
-  }
-}
-
-void waitUntilNetworkConnected(short secondsToWait) {
-  debugPrint(F("Connect to network"));
-  int netConn;
-
-  fona.setNetworkSettings(APN, F(""), F(""));
-
-  // we're waiting 2s each loop
-  secondsToWait = secondsToWait/2;
-  
-  for (int i = 0; i < secondsToWait; i++) {
-    debugPrint(F("."));
-    netConn = fona.getNetworkStatusSIM7000();
-    
-    // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
-    // 1 Registered, home
-    // 2 Not registered, trying to attach or searching an operator to register to
-    // 3 Registration denied
-    // 4 Unknown
-    // 5 Registered, roaming
-    if (netConn == 1 || netConn == 5) {
-      debugPrintln(F("\nConnected"));
-      simComConnectionStatus = 0;
-      fona.setNetworkSettings(APN, F(""), F(""));
-      fona.TCPshut();  // just in case GPRS is still on for some reason, save power
-      return;
-    }
-    delay(2000);
-  }
-
-  simComConnectionStatus = netConn;
-  setSimComFuntionality(0);
-}
-
-#ifdef NEW_HARDWARE_ONLY
 void initEEPROM() {
   // used on brand-new Arduino Nano
   debugPrintln(F("Begin initEEPROM()"));
