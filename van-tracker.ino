@@ -17,27 +17,18 @@ Basic info codes (0 longs followed by THIS MANY shorts):
   4 = connected to SimCom successfully
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
-  1  = failed  sending SMS - will also be followed by more blinking, see below
+  1  = not used (see below for error codes in failure to send SMS)
   2  = success sending SMS
   3  = failed  deleting SMS
   4  = success deleting SMS
   5  = failed  turning on  GPS
-  6  = none
+  6  = not used
   7  = failed  getting fix on GPS
   8  = success getting fix on GPS
   9  = failed  turning off GPS
   10 = success turning off GPS
 
-Error codes causing restart (2 longs followed by THIS MANY shorts):
-  1 = failed in setupSimCom(): "Connecting to SimCom failed, restarting"
-  2 = failed in waitUntilSMSReady(): "Connect to SMS failed, restarting"
-  3 = failed in getTime()
-  4 = failed in checkSMSInput()
-  5 = failed to turn on GPS
-  6 = failed to get GPS satellite fix
-  7 = failed in deleteSMS()
-
-Error codes in failure to send SMS (3 longs followed by THIS MANY shorts) - see https://hologram.io/docs/reference/cloud/embedded/:
+Error codes in failure to send SMS (2 longs followed by THIS MANY shorts) - see https://hologram.io/docs/reference/cloud/embedded/:
   1 = Connection was closed so we couldn’t read enough
   2 = Couldn’t parse the message - possibly the wrong devKey
   3 = Auth section of message was invalid
@@ -46,19 +37,15 @@ Error codes in failure to send SMS (3 longs followed by THIS MANY shorts) - see 
   6 = An internal error occurred
   7 = Metadata section of message was formatted incorrectly
   8 = Topic contained invalid characters or was too long
-  9 = DevKey is not set - owner needs to update it:
-    A. Go to your Hologram dashboard, then Devices, choose your device, then go to Webhooks, then click Generate (or Show) Device Key
-    B. Send a text message to your device: Use the command "devkey set ________" where ________ is the 8-digit Device Key you got in step A
+  9 = DevKey is not set - contact Van Tracker support
   10 = Unknown
 
-Connection failure either to SimCom chip or cellular network (4 long followed by THIS MANY shorts):
+Connection failure either to SimCom chip or cellular network (3 long followed by THIS MANY shorts):
   This happens before restarting, which will have its own blink code, see above
     1 = Failed to connect to SimCom chip
     2 = Not registered, trying to attach or searching an operator to register to
     3 = Registration denied
     4 = Unknown
-
-New hardware initialization complete (5 long followed by 0 short)
 */
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -138,8 +125,6 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 // 4 = Unknown
 short simComConnectionStatus = 2;
 
-short totalErrors = 0;
-char lastError[2] = "0";
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
@@ -185,7 +170,7 @@ void loop() {
   // 0 is good
   // > 0 is bad
   if (simComConnectionStatus > 0) {
-    debugBlink(4,simComConnectionStatus);
+    debugBlink(3,simComConnectionStatus);
     delay(2000);
 
     debugBlink(0,2);
@@ -366,24 +351,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 void checkSMSInput() {
   int8_t numberOfSMSs;
 
-  for (int i = 0; i < 5; i++) {
-    numberOfSMSs = fona.getNumSMS();
-    debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
+  numberOfSMSs = fona.getNumSMS();
+  debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
 
-    if (numberOfSMSs == 0)
-      return;
-
-    if (numberOfSMSs > 0) {
-      handleSMSInput();
-      return;
-    }
-    fona.setEchoOff();
-    debugPrintln(F("error in checkSMSInput()"));
-    delay(1000);
-  }
-  debugPrintln(F("failure in checkSMSInput()"));
-  totalErrors++;
-  lastError[0] = '4';
+  if (numberOfSMSs > 0)
+    handleSMSInput();
 }
 
 void handleSMSInput() {
@@ -1002,8 +974,6 @@ void setGPS(bool tf) {
 
   // error, give up
   if (fona.GPSstatusSIM7000() < 0) {
-    totalErrors++;
-    lastError[0] = '5';
     debugPrintln(F("Failed to turn on GPS"));
     debugBlink(1,5);
     return;
@@ -1035,8 +1005,6 @@ void setGPS(bool tf) {
 
   // no fix, give up
   if (fona.GPSstatusSIM7000() < 2) {
-    totalErrors++;
-    lastError[0] = '6';
     debugPrintln(F("Failed to get GPS fix"));
     debugBlink(1,7);
     return;
@@ -1068,19 +1036,13 @@ bool getGPSLatLon(char* latitude, char* longitude) {
 }
 
 void getTime(char* currentTimeStr) {
-  // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes
-  
+
+  // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes  
   for (short i = 0; i < 5; i++) {
     fona.getTime(currentTimeStr, 23);
     if (currentTimeStr[0] == '"')
       break;
     delay(1000);
-  }
-
-  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
-  if (!currentTimeStr[0] == '"') {
-    totalErrors++;
-    lastError[0] = '3';
   }
 }
 
@@ -1111,8 +1073,6 @@ void deleteSMS(uint8_t msg_number) {
   }
   debugPrintln(F("  Failed to delete SMS"));
   debugBlink(1,3);
-  totalErrors++;
-  lastError[0] = '7';
 }
 
 bool sendSMS(char* send_to, char* message) {
@@ -1141,7 +1101,7 @@ bool sendSMS(char* send_to, char* message) {
   // 00000000 is the default devKey (comes from initEEPROM)
   // we delete the incoming SMS so we don't try to send the msg indefinitely
   if (strstr_P(devKey, PSTR("00000000"))) {
-    debugBlink(3,9);
+    debugBlink(2,9);
     debugPrintln(F("DEVKEY NOT SET! DELETING SMS!"));
     return true;
   }
@@ -1173,7 +1133,7 @@ bool sendSMS(char* send_to, char* message) {
   } else {
     debugPrintln(F("  Failed to send SMS"));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
-    debugBlink(3,successCode);
+    debugBlink(2,successCode);
     fona.TCPshut();
     return false;
   }
@@ -1285,30 +1245,6 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
       return true;
 
   return false;
-}
-
-void reportAndRestart(short shortBlinks, const __FlashStringHelper* message) {
-  debugBlink(2,shortBlinks);
-
-  //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
-  char ownerPhoneNumber[15];
-  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-
-  debugPrintln(message);
-  sendSMS(ownerPhoneNumber, message);
-  resetSystem();
-}
-
-void reportAndRestart(short shortBlinks, char* message) {
-  debugBlink(2,shortBlinks);
-
-  //TBD add method gotError(errMsg) which replaces "totalErrors++" everywhere, which writes error to EEPROM then on next startup, send SMS with err msg.  don't send sms here.
-  char ownerPhoneNumber[15];
-  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-
-  debugPrintln(message);
-  sendSMS(ownerPhoneNumber, message);
-  resetSystem();
 }
 
 void resetSystem() {
