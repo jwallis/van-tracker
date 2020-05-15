@@ -125,6 +125,8 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 // 4 = Unknown
 short simComConnectionStatus = 2;
 
+short lastRestartHour = -1;
+short lastRestartMinute = -1;
 short lastGPSQueryMinute = -1;
 short lastGeofenceWarningMinute = -1;
 
@@ -134,12 +136,6 @@ volatile bool startAttemptedWhileKillSwitchOnVolatile = false;
 void setup() {
 
   pinSetup();
-
-#ifdef VAN_PROD
-  setupSimCom();
-  waitUntilNetworkConnected(600);
-  checkForDeadMessages();
-#endif
   
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
@@ -155,10 +151,14 @@ void setup() {
 
 #ifdef VAN_TEST
   setupSerial();
+#endif
+
   setupSimCom();
   waitUntilNetworkConnected(600);
   checkForDeadMessages();
-#endif
+  
+  lastRestartHour = getCurrentHourInt();
+  lastRestartMinute = getCurrentMinuteInt();
 }
 
 void loop() {
@@ -167,7 +167,6 @@ void loop() {
   flushSimCom();
 #endif
 
-  // 0 is good
   // > 0 is bad
   if (simComConnectionStatus > 0) {
     debugBlink(3,simComConnectionStatus);
@@ -175,6 +174,7 @@ void loop() {
 
     debugBlink(0,2);
   }
+  // 0 is good
   else {
     debugBlink(0,1);
     checkSMSInput();
@@ -185,18 +185,33 @@ void loop() {
 
   watchDogForKillSwitch();
   watchDogForTurnOffGPS();
-  watchDogForErrors();
+  watchDogForReset();
 
   delay(500);
 }
 
-void watchDogForErrors() {
-  if (totalErrors > 2) {
-    totalErrors = 0;
-    char message[30];
-    strcpy_P(message, PSTR("Restarting. Error code: "));
-    strcat(message, lastError); 
-    reportAndRestart(atoi(lastError), message);
+void watchDogForReset() {
+  short currentTime = getCurrentHourInt() * 60 + getCurrentMinuteInt();
+  short lastRestartTime = lastRestartHour * 60 + lastRestartMinute;
+
+  // 0 is connected
+  if (simComConnectionStatus == 0) {
+    // if it's been 180 minutes, restart
+    if (lastRestartTime <= currentTime && currentTime - lastRestartTime > 180) {
+      resetSystem();
+    }
+    if (lastRestartTime > currentTime && lastRestartTime - currentTime < 1260) {
+      resetSystem();
+    }
+  } // > 0 is not connected
+  else {
+    // if it's been 30 minutes, restart
+    if (lastRestartTime <= currentTime && currentTime - lastRestartTime > 30) {
+      resetSystem();
+    }
+    if (lastRestartTime > currentTime && lastRestartTime - currentTime < 1410) {
+      resetSystem();
+    }
   }
 }
 
@@ -1252,6 +1267,9 @@ void resetSystem() {
   setSimComFuntionality(1);
   setupSimCom();
   waitUntilNetworkConnected(120);
+
+  lastRestartHour = getCurrentHourInt();
+  lastRestartMinute = getCurrentMinuteInt();
 }
 
 void setSimComFuntionality(short func) {
@@ -1534,15 +1552,13 @@ void setupSimCom() {
     delay(2000);
   }
   simComConnectionStatus = 1;
-  setSimComFuntionality(0);
+
+  while (1) {
+    debugBlink(3,simComConnectionStatus);
+  }
 }
 
 void waitUntilNetworkConnected(short secondsToWait) {
-
-  // if we can't connect to SimCom, don't bother trying to connect to cell network
-  if (simComConnectionStatus == 1)
-    return;
-
   debugPrint(F("Connect to network"));
   int netConn;
 
