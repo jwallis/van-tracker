@@ -167,25 +167,31 @@ void loop() {
   flushSimCom();
 #endif
 
-  // > 0 is bad
-  if (simComConnectionStatus > 0) {
-    debugBlink(3,simComConnectionStatus);
-    delay(2000);
-
-    debugBlink(0,2);
-  }
-  // 0 is good
-  else {
+  // 0 is good - we're connected to the cellular network
+  if (simComConnectionStatus == 0) {
     debugBlink(0,1);
     checkSMSInput();
 
     debugBlink(0,2);
+    watchDogForKillSwitch();
     watchDogForGeofence();
+    watchDogForTurnOffGPS();
+    watchDogForReset();
   }
+  // 1 is very bad - could not connect to SIM7000
+  if (simComConnectionStatus == 1) {
+    waitAndResetSimCom();
+  }
+  // > 1 is also bad - could not connect to cellular network
+  if (simComConnectionStatus > 1) {
+    debugBlink(3,simComConnectionStatus);
+    delay(2000);
 
-  watchDogForKillSwitch();
-  watchDogForTurnOffGPS();
-  watchDogForReset();
+    debugBlink(0,2);
+    watchDogForKillSwitch();
+    watchDogForTurnOffGPS();
+    watchDogForReset();
+  }
 
   delay(500);
 }
@@ -213,6 +219,16 @@ void watchDogForReset() {
       resetSystem();
     }
   }
+}
+
+void waitAndResetSimCom() {
+  // delay 30 minutes = 250 * 7 seconds
+  // loop takes about 7 seconds
+  for (short i; i < 250; i++) {
+    delay(2000);
+    debugBlink(3,simComConnectionStatus);
+  }
+  resetSystem();
 }
 
 void resetSystem() {
@@ -1121,6 +1137,11 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
 //SMS
 
 void checkForDeadMessages() {
+  // skip if we're not connected to the SimCom
+  if (simComConnectionStatus == 1) {
+    return;
+  }
+
   // sim7000 can only hold 10 messages, it cannot see the rest until those 10 are processed.  That means if we are debugging
   // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
@@ -1507,19 +1528,21 @@ void setupSimCom() {
     debugPrint(F("."));
     if (fona.getNumSMS() >= 0) {
       debugPrintln(F("\nSimCom OK"));
+      simComConnectionStatus = 2;
       debugBlink(0,4);
       return;
     }
     delay(2000);
   }
   simComConnectionStatus = 1;
-
-  while (1) {
-    debugBlink(3,simComConnectionStatus);
-  }
 }
 
 void waitUntilNetworkConnected(short secondsToWait) {
+  // no point trying to conenct to network if we can't connect to SimCom
+  if (simComConnectionStatus == 1) {
+    return;
+  }
+
   debugPrint(F("Connect to network"));
   short netConn;
 
