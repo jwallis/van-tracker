@@ -202,11 +202,11 @@ void watchDogForReset() {
 
   // 0 is connected
   if (simComConnectionStatus == 0) {
-    // if it's been 180 minutes, restart
-    if (lastRestartTime <= currentTime && currentTime - lastRestartTime > 180) {
+    // if it's been 120 minutes, restart
+    if (lastRestartTime <= currentTime && currentTime - lastRestartTime > 120) {
       resetSystem();
     }
-    if (lastRestartTime > currentTime && lastRestartTime - currentTime < 1260) {
+    if (lastRestartTime > currentTime && lastRestartTime - currentTime < 1320) {
       resetSystem();
     }
   } // > 0 is not connected
@@ -920,14 +920,9 @@ bool handleUnknownReq(char* smsSender) {
 void setGPS(bool tf) {
   // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
-    fona.enableGPSSIM7000(false);
-
-    for (int k = 0; k < 3; k++) {
-      if (fona.GPSstatusSIM7000() == 0) {
-        debugBlink(1,10);
-        return;
-      }
-      delay(2000);
+    if (fona.enableGPSSIM7000(false)) {
+      debugBlink(1,10);
+      return;
     }
     debugBlink(1,9);
     debugPrintln(F("Failed to turn off GPS"));
@@ -960,10 +955,8 @@ void setGPS(bool tf) {
   }
 
   // off, turn on
-  if (fona.GPSstatusSIM7000() == 0) {
-    fona.enableGPSSIM7000(true);
-    delay(4000);
-  }
+  fona.enableGPSSIM7000(true);
+  delay(4000);
 
   
   char currentLat[12];
@@ -984,11 +977,8 @@ void setGPS(bool tf) {
   }
 
   // no fix, give up
-  if (fona.GPSstatusSIM7000() < 2) {
-    debugPrintln(F("Failed to get GPS fix"));
-    debugBlink(1,7);
-    return;
-  }
+  debugPrintln(F("Failed to get GPS fix"));
+  debugBlink(1,7);
 }
 
 bool getGPSLatLon(char* latitude, char* longitude) {
@@ -1067,10 +1057,15 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
 void getTime(char* currentTimeStr) {
 
   // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes  
-  for (short i = 0; i < 5; i++) {
+  for (short i = 0; i < 3; i++) {
     fona.getTime(currentTimeStr, 23);
+
+    // if time string looks good...
     if (currentTimeStr[0] == '"')
-      break;
+      return;
+
+    // else, try simple self-healing.  If echo is on, basically all commands to SIM7000 won't work.
+    fona.setEchoOff();
     delay(1000);
   }
 }
