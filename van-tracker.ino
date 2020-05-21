@@ -43,7 +43,7 @@ Error codes in failure to send SMS (2 longs followed by THIS MANY shorts) - see 
 Connection failure either to SimCom chip or cellular network (3 long followed by THIS MANY shorts):
   This happens before restarting, which will have its own blink code, see above
     1 = Failed to connect to SimCom chip
-    2 = Not registered, trying to attach or searching an operator to register to
+    2 = Not registered
     3 = Registration denied
     4 = Unknown
 */
@@ -117,11 +117,11 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define SERVERPORT_INT_2                  140
 
 
-// simComConnectionStatus
+// simComConnectionStatus status meanings
 // 0 = connected to cell network
 // 1 = Failed to connect to SimCom chip
-// 2 = Not registered, trying to attach or searching an operator to register to
-// 3 = Registration denied
+// 2 = Not registered on cell network
+// 3 = Cell network registration denied
 // 4 = Unknown
 short simComConnectionStatus = 2;
 
@@ -156,9 +156,8 @@ void setup() {
   setupSimCom();
   waitUntilNetworkConnected(600);
   checkForDeadMessages();
-  
-  lastRestartHour = getCurrentHourInt();
-  lastRestartMinute = getCurrentMinuteInt();
+
+  updateLastResetTimes();
 }
 
 void loop() {
@@ -235,14 +234,22 @@ void watchDogForReset() {
   }
 }
 
+void updateClock() {
+}
+
+void updateLastResetTimes() {
+  updateClock();
+  lastRestartHour = getCurrentHourInt();
+  lastRestartMinute = getCurrentMinuteInt();
+}
+
 void resetSystem() {
   debugBlink(0,3);
   setSimComFuntionality(1);
   setupSimCom();
   waitUntilNetworkConnected(120);
 
-  lastRestartHour = getCurrentHourInt();
-  lastRestartMinute = getCurrentMinuteInt();
+  updateLastResetTimes();  
 }
 
 void watchDogForTurnOffGPS() {
@@ -383,6 +390,7 @@ void handleSMSInput() {
 
   char smsSender[15];
   char smsValue[51];
+  uint16_t smsValueLength;
   int8_t smssFound = 0;
 
   for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
@@ -390,14 +398,12 @@ void handleSMSInput() {
     if (smsSlotNumber >= 10)
       break;
 
-    if (isSMSSlotFilled(smsSlotNumber))
+    if (fona.getSMSSender(smsSlotNumber, smsSender, 15))
       smssFound++;
     else
       continue;
 
-    getSMSSender(smsSlotNumber, smsSender);
-    getSMSValue(smsSlotNumber, smsValue);
-
+    fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
     toLower(smsValue);
 
     debugPrintln(F("--read SMS--"));
@@ -463,7 +469,7 @@ void handleSMSInput() {
 
     if (strstr_P(smsValue, PSTR("devkey"))) {
       // special: we want to pass the case-sensitive version to handleDevKeyReq because the devKey is case sensitive
-      getSMSValue(smsSlotNumber, smsValue);
+      fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
       handleDevKeyReq(smsSender, smsValue);
       deleteSMS(smsSlotNumber);
       continue;
@@ -1222,6 +1228,7 @@ bool sendSMS(char* send_to, char* message) {
   if (successCode == 0) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
+    updateLastResetTimes();
     return true;
   } else {
     debugPrintln(F("  Failed to send SMS"));
@@ -1236,37 +1243,6 @@ bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
   strcpy_P(message, (const char*)messageInProgmem);
   return sendSMS(send_to, message);
 }
-
-bool isSMSSlotFilled(int8_t smsSlotNumber) {
-  char smsSender[15];
-
-  if (fona.getSMSSender(smsSlotNumber, smsSender, 15)) {
-    return true;
-  }
-  return false;
-}
-
-void getSMSSender(int8_t smsSlotNumber, char* smsSender) {
-  for (int i = 0; i < 3; i++) {
-    if (fona.getSMSSender(smsSlotNumber, smsSender, 15))
-      break;
-    debugPrintln(F("  Failed getting SMS sender"));
-    delay(1000);
-  }
-}
-
-void getSMSValue(int8_t smsSlotNumber, char* smsValue) {
-  uint16_t smsValueLength;
-
-  for (int i = 0; i < 3; i++) {
-    if (fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength))
-      break;
-    debugPrintln(F("  Failed getting SMS value"));
-    delay(1000);
-  }
-}
-
-
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1560,12 +1536,21 @@ void waitUntilNetworkConnected(short secondsToWait) {
     debugPrint(F("."));
     netConn = fona.getNetworkStatusSIM7000();
     
+
+    // netConn status meanings:
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
     // 1 Registered, home
     // 2 Not registered, trying to attach or searching an operator to register to
     // 3 Registration denied
     // 4 Unknown
     // 5 Registered, roaming
+
+    // simComConnectionStatus status meanings
+    // 0 = connected to cell network
+    // 1 = Failed to connect to SimCom chip
+    // 2 = Not registered on cell network
+    // 3 = Cell network registration denied
+    // 4 = Unknown
     if (netConn == 1 || netConn == 5) {
       debugPrintln(F("\nConnected"));
       simComConnectionStatus = 0;
@@ -1576,7 +1561,7 @@ void waitUntilNetworkConnected(short secondsToWait) {
     delay(2000);
   }
 
-  // 0 is good, so set it to 2 (not registered)
+  // netConn == 0 is bad, so we translate it to 2 (not registered) before assigning its value to simComConnectionStatus
   if (netConn == 0)
     netConn = 2;
 
@@ -1824,9 +1809,6 @@ void handleSerialInput(String command) {
   }
   if (strcmp_P(temp, PSTR("p")) == 0) {
     putEEPROM();
-  }
-  if (strcmp_P(temp, PSTR("w")) == 0) {
-    watchDog();
   }
 
 // for SERIAL TUBE:
