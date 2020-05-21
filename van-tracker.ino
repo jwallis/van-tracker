@@ -180,7 +180,13 @@ void loop() {
   }
   // 1 is very bad - could not connect to SIM7000
   if (simComConnectionStatus == 1) {
-    waitAndResetSimCom();
+
+    // Delay 30 minutes and reset.  This loop takes about 7 seconds. 250 loops * 7 seconds = 30 minutes.
+    for (short i = 0; i < 250; i++) {
+      delay(2000);
+      debugBlink(3,simComConnectionStatus);
+    }
+    resetSystem();
   }
   // > 1 is also bad - could not connect to cellular network
   if (simComConnectionStatus > 1) {
@@ -199,6 +205,14 @@ void loop() {
 void watchDogForReset() {
   short currentTime = getCurrentHourInt() * 60 + getCurrentMinuteInt();
   short lastRestartTime = lastRestartHour * 60 + lastRestartMinute;
+
+  // Edge case: if simcom stops responding, we may get both times == 0.  
+  // Restart.  It will then either start working or go to simComConnectionStatus == 1
+  if (currentTime == 0 && lastRestartTime == 0) {
+            debugPrintln("watchDogForReset3: ");
+    resetSystem();
+    return;
+  }
 
   // 0 is connected
   if (simComConnectionStatus == 0) {
@@ -219,16 +233,6 @@ void watchDogForReset() {
       resetSystem();
     }
   }
-}
-
-void waitAndResetSimCom() {
-  // delay 30 minutes = 250 * 7 seconds
-  // loop takes about 7 seconds
-  for (short i; i < 250; i++) {
-    delay(2000);
-    debugBlink(3,simComConnectionStatus);
-  }
-  resetSystem();
 }
 
 void resetSystem() {
@@ -917,16 +921,16 @@ bool handleUnknownReq(char* smsSender) {
 ////////////////////////////////
 //GPS
 
-void setGPS(bool tf) {
+bool setGPS(bool tf) {
   // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
     if (fona.enableGPSSIM7000(false)) {
       debugBlink(1,10);
-      return;
+      return true;
     }
     debugBlink(1,9);
     debugPrintln(F("Failed to turn off GPS"));
-    return;
+    return false;
   }
 
   // -1 = error querying GPS
@@ -935,7 +939,7 @@ void setGPS(bool tf) {
   //  2 = 2D fix
   //  3 = 3D fix
   if (fona.GPSstatusSIM7000() >= 2)
-    return;
+    return true;
 
   int8_t status;
 
@@ -951,10 +955,10 @@ void setGPS(bool tf) {
   if (fona.GPSstatusSIM7000() < 0) {
     debugPrintln(F("Failed to turn on GPS"));
     debugBlink(1,5);
-    return;
+    return false;
   }
 
-  // off, turn on
+  // turn on
   fona.enableGPSSIM7000(true);
   delay(4000);
 
@@ -971,7 +975,7 @@ void setGPS(bool tf) {
       getGPSLatLon(currentLat, currentLon);
       delay(3000);
       getGPSLatLon(currentLat, currentLon);
-      return;
+      return true;
     }
     delay(4000);
   }
@@ -979,27 +983,29 @@ void setGPS(bool tf) {
   // no fix, give up
   debugPrintln(F("Failed to get GPS fix"));
   debugBlink(1,7);
+  return false;
 }
 
 bool getGPSLatLon(char* latitude, char* longitude) {
   char gpsString[120];
 
-  setGPS(true);
-
-  // full string:
-  // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-  for (short i = 0; i < 10; i++) {
-    fona.getGPS(0, gpsString, 120);
-    lastGPSQueryMinute = getCurrentMinuteInt();
-
-    getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
-    getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
-
-    // we have see errors where the lat,long come back as garbage like "9,43"
-    if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
-      return true;
+  if (setGPS(true)){
+    // full string:
+    // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    for (short i = 0; i < 10; i++) {
+      fona.getGPS(0, gpsString, 120);
+      lastGPSQueryMinute = getCurrentMinuteInt();
+  
+      getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
+      getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
+  
+      // we have see errors where the lat,long come back as garbage like "9,43"
+      if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
+        return true;
+      }
     }
   }
+
   latitude[0] = '\0';
   longitude[0] = '\0';
   return false;
@@ -1211,17 +1217,16 @@ bool sendSMS(char* send_to, char* message) {
   debugPrint(F("  Success code: "));
   itoa(successCode, serverName, 10);
   debugPrintln(serverName);
+  fona.TCPshut();
 
   if (successCode == 0) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
-    fona.TCPshut();
     return true;
   } else {
     debugPrintln(F("  Failed to send SMS"));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(2,successCode);
-    fona.TCPshut();
     return false;
   }
 }
@@ -1287,8 +1292,13 @@ bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   // smsValue:
   // fence hours 0 21
   // 0 21 means 12am - 9pm
-  getOccurrenceInDelimitedString(smsValue, hoursStart, 3, ' ');
-  getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ');
+  getOccurrenceInDelimitedString(smsValue, hoursStart, 3, ' ', 2);
+  getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ', 2);
+
+  // if atoi can't find an translation (it returns 0) AND the first character isn't '0' - then something's wrong
+  if ((atoi(hoursStart) == 0 && hoursStart[0] != '0') || (atoi(hoursEnd) == 0 && hoursEnd[0] != '0')) {
+    return false;
+  }
 
   return (hoursStart[0] && hoursEnd[0]);
 }
