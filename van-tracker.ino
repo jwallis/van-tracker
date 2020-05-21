@@ -378,7 +378,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
 void checkSMSInput() {
   int8_t numberOfSMSs;
 
-  numberOfSMSs = fona.getNumSMS();
+  numberOfSMSs = fona.getNumSMSSIM7000();
   debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
 
   if (numberOfSMSs > 0)
@@ -386,7 +386,7 @@ void checkSMSInput() {
 }
 
 void handleSMSInput() {
-  short numberOfSMSs = fona.getNumSMS();
+  short numberOfSMSs = fona.getNumSMSSIM7000();
 
   char smsSender[15];
   char smsValue[51];
@@ -978,9 +978,10 @@ bool setGPS(bool tf) {
       debugBlink(1,8);
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
-      getGPSLatLon(currentLat, currentLon);
+      // We have to sendRaw() because if we call getGPS we're calling the function that called this function.
+      sendRawCommand(F("AT+CGNSINF"));
       delay(3000);
-      getGPSLatLon(currentLat, currentLon);
+      sendRawCommand(F("AT+CGNSINF"));
       return true;
     }
     delay(4000);
@@ -1153,7 +1154,7 @@ void checkForDeadMessages() {
   // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
   // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
-  short numberOfSMSs = fona.getNumSMS();
+  short numberOfSMSs = fona.getNumSMSSIM7000();
   if (numberOfSMSs == 10) {
     fona.deleteAllSMS();
     debugPrintln(F("SMS storage FULL. Deleting ALL SMS"));
@@ -1501,19 +1502,18 @@ void setupSimCom() {
   debugPrint(F("Connect to SimCom"));
   // let SimCom module start up before we try to connect
   delay(5000);
-
   SimComSerial->begin(9600);
-  fona.beginSIM7000(*SimComSerial);
-  
-  for (int i = 0; i < 30; i++) {
+
+  for (int i = 0; i < 3; i++) {
+    fona.beginSIM7000(*SimComSerial);
     debugPrint(F("."));
-    if (fona.getNumSMS() >= 0) {
+
+    if (fona.getNumSMSSIM7000() >= 0) {
       debugPrintln(F("\nSimCom OK"));
       simComConnectionStatus = 2;
       debugBlink(0,4);
       return;
     }
-    delay(2000);
   }
   simComConnectionStatus = 1;
 }
