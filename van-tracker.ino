@@ -84,6 +84,11 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define GEOFENCE_LED_PIN 7
 #define DEBUG_PIN 13
 
+// QUOTES ARE PART OF THE STRING: "20/01/31,17:03:01-20"
+#define MINUTE_INDEX 13
+#define HOUR_INDEX 10
+#define YEAR_INDEX 1
+
 SoftwareSerial SimComSS = SoftwareSerial(SIMCOM_TX_PIN, SIMCOM_RX_PIN);
 SoftwareSerial *SimComSerial = &SimComSS;
 
@@ -202,7 +207,7 @@ void loop() {
 }
 
 void watchDogForReset() {
-  short currentTime = getCurrentHourInt() * 60 + getCurrentMinuteInt();
+  short currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
   short lastRestartTime = lastRestartHour * 60 + lastRestartMinute;
 
   // Edge case: if simcom stops responding, we may get both times == 0.  
@@ -239,8 +244,8 @@ void updateClock() {
 
 void updateLastResetTimes() {
   updateClock();
-  lastRestartHour = getCurrentHourInt();
-  lastRestartMinute = getCurrentMinuteInt();
+  lastRestartHour = getTimePartInt(HOUR_INDEX);
+  lastRestartMinute = getTimePartInt(MINUTE_INDEX);
 }
 
 void resetSystem() {
@@ -258,7 +263,7 @@ void watchDogForTurnOffGPS() {
   if (lastGPSQueryMinute == -1)
     return;
 
-  short currentMinuteInt = getCurrentMinuteInt();
+  short currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
   // if it's been > 10 min, take action (turn off gps to save power)
 
@@ -305,7 +310,7 @@ void watchDogForGeofence() {
     return;
   }
 
-  short currentMinuteInt = getCurrentMinuteInt();
+  short currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
   // If the geofence was broken...
   if (lastGeofenceWarningMinute != -1) {
@@ -372,7 +377,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
     sendSMS(ownerPhoneNumber, F("Use \"follow enable\" to receive rapid location updates (\"follow disable\" to stop)"));
   }
 
-  lastGeofenceWarningMinute = getCurrentMinuteInt();
+  lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
 }
 
 void checkSMSInput() {
@@ -410,24 +415,28 @@ void handleSMSInput() {
     debugPrintln(smsSender);
     debugPrintln(smsValue);
 
+    // exact match
     if (strcmp_P(smsValue, PSTR("unlock")) == 0) {
       if (handleUnlockReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // exact match
     if (strcmp_P(smsValue, PSTR("lock")) == 0) {
       if (handleLockReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // exact match
     if (strcmp_P(smsValue, PSTR("loc")) == 0) {
       if (handleLocReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // "contains" match
     if (strstr_P(smsValue, PSTR("both"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
@@ -437,6 +446,7 @@ void handleSMSInput() {
       continue;
     }    
 
+    // "contains" match
     if (strstr_P(smsValue, PSTR("kill"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
@@ -446,6 +456,7 @@ void handleSMSInput() {
       continue;
     }
 
+    // "contains" match
     if (strstr_P(smsValue, PSTR("fence"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
@@ -455,18 +466,21 @@ void handleSMSInput() {
       continue;
     }
 
+    // "contains" match
     if (strstr_P(smsValue, PSTR("follow"))) {
       if (handleFollowReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // "contains" match
     if (strstr_P(smsValue, PSTR("owner"))) {
       if (handleOwnerReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // "contains" match
     if (strstr_P(smsValue, PSTR("devkey"))) {
       // special: we want to pass the case-sensitive version to handleDevKeyReq because the devKey is case sensitive
       fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
@@ -475,18 +489,21 @@ void handleSMSInput() {
       continue;
     }
 
+    // exact match
     if (strcmp_P(smsValue, PSTR("status")) == 0) {
       if (handleStatusReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // exact match
     if (strcmp_P(smsValue, PSTR("commands")) == 0) {
       if (handleCommandsMessagesReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
 
+    // exact match
     if (strcmp_P(smsValue, PSTR("deleteallmessages")) == 0) {
       fona.deleteAllSMS();
       return;  // notice this is RETURN not continue!
@@ -793,14 +810,14 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 
   validMessage = setEnableAndHours(smsValue, GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3, geofenceEnabled, geofenceStart, geofenceEnd);  
   
-  if (strstr_P(smsValue, PSTR("radius"))) {
+  if (strstr_P(smsValue, PSTR("fence radius "))) {
     geofenceRadius[0] = '\0';
     if (getNumberFromString(smsValue, geofenceRadius, 7)) {
       EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
       validMessage = true;
     }
   }
-  if (strstr_P(smsValue, PSTR("home"))) {
+  if (strstr_P(smsValue, PSTR("fence home "))) {
     getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
@@ -858,7 +875,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   char ownerPhoneNumber[15] = "";
 
   // set owner number
-  if (strstr_P(smsValue, PSTR("set"))) {
+  if (strstr_P(smsValue, PSTR("owner set"))) {
     if (getNumberFromString(smsValue, ownerPhoneNumber, 15))  // If number is found in the SMS,
       addPlusToPhoneNumber(ownerPhoneNumber);                 // add a '+' to the beginning...
     else
@@ -1001,12 +1018,13 @@ bool getGPSLatLon(char* latitude, char* longitude) {
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (short i = 0; i < 10; i++) {
       fona.getGPS(0, gpsString, 120);
-      lastGPSQueryMinute = getCurrentMinuteInt();
+      lastGPSQueryMinute = getTimePartInt(MINUTE_INDEX);
   
       getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
       getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
   
-      // we have see errors where the lat,long come back as garbage like "9,43"
+      // We have see errors where the lat,long come back as garbage like "9,43"
+      // Leave the != NULL in there in case the '.' is at the 0th position, which I think is valid
       if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
         return true;
       }
@@ -1069,7 +1087,7 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
 
 void getTime(char* currentTimeStr) {
 
-  // sets currentTime to "19/09/19,17:03:55-20" INCLUDING quotes  
+  // sets currentTime to "20/01/31,17:03:55-20" INCLUDING quotes  
   for (short i = 0; i < 3; i++) {
     fona.getTime(currentTimeStr, 23);
 
@@ -1083,29 +1101,23 @@ void getTime(char* currentTimeStr) {
   }
 }
 
-int getCurrentMinuteInt() {
-  char currentTimeStr[23];
-  char currentMinuteStr[3];
-  
-  getTime(currentTimeStr);
-
-  currentMinuteStr[0] = currentTimeStr[13];
-  currentMinuteStr[1] = currentTimeStr[14];
-  currentMinuteStr[2] = '\0';
-  return atoi(currentMinuteStr);
+int getTimePartInt(int index) {
+  char timeStr[23];
+  getTime(timeStr);
+  return getTimePartInt(index, timeStr);
 }
 
-int getCurrentHourInt() {
-  char currentTimeStr[23];
-  char currentHourStr[3];
-  
-  getTime(currentTimeStr);
+int getTimePartInt(int index, char* timeStr) {
+  // get a 2-character "part" of the time string as an int, "part" being year, minute, hour, etc.
+  char timePartStr[3];
 
-  // QUOTES ARE PART OF THE STRING: "19/09/19,17:03:01-20"
-  currentHourStr[0] = currentTimeStr[10];
-  currentHourStr[1] = currentTimeStr[11];
-  currentHourStr[2] = '\0';
-  return atoi(currentHourStr);
+  // for both, QUOTES ARE PART OF THE STRING!
+  // CCLK: "20/01/31,17:03:01-20"
+  // CNTP: "2020/05/26,21:26:21"
+  timePartStr[0] = timeStr[index];
+  timePartStr[1] = timeStr[index+1];
+  timePartStr[2] = '\0';
+  return atoi(timePartStr);
 }
 
 bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
@@ -1126,7 +1138,7 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
   if (strcmp(startHour, endHour) == 0)
     return true;
 
-  short currentHour = getCurrentHourInt();
+  short currentHour = getTimePartInt(HOUR_INDEX);
 
   // simple case, current time is between start/end.  Start time is inclusive, end time is exclusive
   if (currentHour >= atoi(startHour) && currentHour < atoi(endHour))
@@ -1163,7 +1175,7 @@ void checkForDeadMessages() {
 
 void deleteSMS(uint8_t msg_number) {
   for (int i = 0; i < 5; i++) {
-    debugPrintln(F("  Attempting to delete SMS"));
+    debugPrintln(F("  Try to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
       debugPrintln(F("  Success deleting SMS"));
       debugBlink(1,4);
@@ -1213,7 +1225,7 @@ bool sendSMS(char* send_to, char* message) {
   strcat(hologramSMSString, message);
   hologramSMSStringLength = strlen(hologramSMSString);
   
-  debugPrintln(F("  Attempting to send SMS:"));
+  debugPrintln(F("  Try to send SMS:"));
   debugPrintln(serverName);
   debugPrintln(serverPort);
   debugPrintln(hologramSMSStringLength);
@@ -1272,7 +1284,7 @@ bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   getOccurrenceInDelimitedString(smsValue, hoursStart, 3, ' ', 2);
   getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ', 2);
 
-  // if atoi can't find an translation (it returns 0) AND the first character isn't '0' - then something's wrong
+  // if atoi can't find a translation (it returns 0) AND the first character isn't '0' - then something's wrong
   if ((atoi(hoursStart) == 0 && hoursStart[0] != '0') || (atoi(hoursEnd) == 0 && hoursEnd[0] != '0')) {
     return false;
   }
@@ -1421,6 +1433,9 @@ bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber,
 }
 
 bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber, char delim, short maxLength) {
+  // occurrenceNumber is 1-based, not 0-based
+  // maxLength does NOT include ending '\0'
+
   // if in == "a,b,c"
   // and occurrenceNumber = 2
   // and delim = ','
@@ -1841,19 +1856,6 @@ void handleSerialInput(String command) {
       }
     }
   }
-
-  if (strcmp_P(temp, PSTR("d")) == 0) {
-    for (int i = 2; i < 10; i++) {
-      debugPrintln(F("  Delete SMS:"));
-      if (fona.deleteSMS(readnumber())) {
-        debugPrintln(F("  Success"));
-        return;
-      }
-      delay(i * 1000);
-    }
-    debugPrintln(F("  Failed"));
-  }
-
   // Test incoming SMS, for example:
   // 5554443333_fence status
   if (command.length() > 2){
