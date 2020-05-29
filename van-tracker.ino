@@ -255,7 +255,7 @@ void watchDogForReset() {
   }
 }
 
-bool isClockCurrent() {
+bool isClockValid() {
   // When the SIM7000 is powered on, the Real Time Clock says 1980-01-01.
   // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
   // So, this function returns true iff the year < 80.
@@ -268,7 +268,7 @@ void updateClock() {
   // Only call this function on SIM7000 startup, not on reset.
   
   // If cellular network gives us the time, we're good...
-  if (isClockCurrent()) {
+  if (isClockValid()) {
     debugPrintln("clock is good 01");
     return;
   }
@@ -281,7 +281,7 @@ void updateClock() {
   EEPROM.get(TIMEZONE_CHAR_4, tzOffsetStr);
   fona.enableNTPTimeSync(true, tzOffsetStr, dummyString, 1);
 
-  if (isClockCurrent()) {
+  if (isClockValid()) {
     debugPrintln("clock is good 02");
     return;
   }
@@ -351,6 +351,14 @@ void updateClock() {
 
     fona.setTime(simComTimeStr);
   }
+
+  
+  if (isClockValid()) {
+    debugPrintln("clock is good 03");
+  } else {
+    // if not, we set connection to "very bad"
+    simComConnectionStatus = 2;
+  }
 }
 
 void updateLastResetTimes() {
@@ -408,7 +416,7 @@ void watchDogForGeofence() {
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
 
   if (follow) {
-    sendGeofenceWarning(true);
+    sendGeofenceWarning();
     return;
   }
 
@@ -449,12 +457,12 @@ void watchDogForGeofence() {
   }
 }
 
-void sendGeofenceWarning(bool follow) {
+void sendGeofenceWarning() {
   char currentLat[12];
   char currentLon[12];
 
   getGPSLatLon(currentLat, currentLon);
-  sendGeofenceWarning(follow, currentLat, currentLon);
+  sendGeofenceWarning(true, currentLat, currentLon);
 }
 
 void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
@@ -808,37 +816,44 @@ bool handleUnlockReq(char* smsSender) {
 bool handleStatusReq(char* smsSender) {
   uint8_t rssi;
   char rssiStr[4];
-  char ccid[22];
   char currentTimeStr[23];
   char message[141];
 
   char ownerPhoneNumber[15] = "";
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-
+  bool fence;
+  EEPROM.get(GEOFENCEENABLED_BOOL_1, fence);
+  bool kill;
+  EEPROM.get(KILLSWITCHENABLED_BOOL_1, kill);
   bool lockdown;
-  char lockdownStr[9];
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdown);
   
-  if (lockdown)
-    strcpy_P(lockdownStr, PSTR("Enabled"));
-  else
-    strcpy_P(lockdownStr, PSTR("Disabled"));
-
   rssi = fona.getRSSI();
   itoa(rssi, rssiStr, 10);
-  fona.getSIMCCID(ccid);
 
   getTime(currentTimeStr);
 
   strcpy_P(message, PSTR("Owner: "));
   strcat(message, ownerPhoneNumber);
-  strcat_P(message, PSTR("\\nLockdown: "));
-  strcat(message, lockdownStr);
+
+  if (fence)
+    strcat_P(message, PSTR("\\nFence: Enabled"));
+  else
+    strcat_P(message, PSTR("\\nFence: Disabled"));
+
+  if (kill)
+    strcat_P(message, PSTR("\\nKill: Enabled"));
+  else
+    strcat_P(message, PSTR("\\nKill: Disabled"));
+
+  if (lockdown)
+    strcat_P(message, PSTR("\\nLockdown: Enabled"));
+  else
+    strcat_P(message, PSTR("\\nLockdown: Disabled"));
+
   strcat_P(message, PSTR("\\nRSSI: "));
   strcat(message, rssiStr);
-  strcat_P(message, PSTR("\\nCCID: "));
-  strcat(message, ccid);
-  strcat_P(message, PSTR("\\nNetwork Time: "));
+  strcat_P(message, PSTR("\\nSystem Time: "));
   strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
 }
@@ -1041,11 +1056,15 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       validMessage = true;
     }
   }
-  if (strstr_P(smsValue, PSTR("fence home "))) {
-    getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
-    EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
-    EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    validMessage = true;
+  if (strstr_P(smsValue, PSTR("fence home"))) {
+    if (getGPSLatLon(geofenceHomeLat, geofenceHomeLon)) {
+      EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
+      EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
+      validMessage = true;
+    } else {
+      strcpy_P(message, PSTR("Unable to get GPS location"));
+      return sendSMS(smsSender, message);
+    }
   }
 
   // reset this so the "follow" message will be sent when the fence is broken
