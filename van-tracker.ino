@@ -22,7 +22,7 @@ Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, ev
   3  = failed  deleting SMS
   4  = success deleting SMS
   5  = failed  turning on  GPS
-  6  = not used
+  6  = success sending plain SMS
   7  = failed  getting fix on GPS
   8  = success getting fix on GPS
   9  = failed  turning off GPS
@@ -39,6 +39,7 @@ Error codes in failure to send SMS (2 longs followed by THIS MANY shorts) - see 
   8 = Topic contained invalid characters or was too long
   9 = DevKey is not set - contact Van Tracker support
   10 = Unknown
+  11 = Failed to send plain SMS
 
 Connection failure either to SimCom chip or cellular network (3 long followed by THIS MANY shorts):
   This happens before restarting, which will have its own blink code, see above
@@ -122,6 +123,8 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define SERVERPORT_INT_2                  140
 
 #define TIMEZONE_CHAR_4                   142
+#define USEPLAINSMS_BOOL_1                146
+
 
 // simComConnectionStatus status meanings
 // 0 = connected to cell network
@@ -130,6 +133,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 // 3 = Cell network registration denied
 // 4 = Unknown
 short simComConnectionStatus = 2;
+short totalFailedSendSMSAttempts = 0;
 
 short lastRestartHour = -1;
 short lastRestartMinute = -1;
@@ -216,6 +220,18 @@ void watchDogForReset() {
   if (currentTime == 0 && lastRestartTime == 0) {
     resetSystem();
     return;
+  }
+
+  // If this is VT-generated (geofence alert) those only get sent every 5 minutes
+  // In the slim chance this is a response to an incoming command, we don't want to just keep retrying a million times
+  if (totalFailedSendSMSAttempts == 3) {
+    totalFailedSendSMSAttempts++;
+    resetSystem();
+    return;
+  }
+  if (totalFailedSendSMSAttempts == 6) {
+    totalFailedSendSMSAttempts = 0;
+    simComConnectionStatus = 2;
   }
 
   // 0 is connected
@@ -608,6 +624,13 @@ void handleSMSInput() {
       continue;
     }
 
+    // "contains" match
+    if (strstr_P(smsValue, PSTR("usesms"))) {
+      handleUseSMSReq(smsSender, smsValue);
+      deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     // exact match
     if (strcmp_P(smsValue, PSTR("deleteallmessages")) == 0) {
       fona.deleteAllSMS();
@@ -832,6 +855,17 @@ bool handleLocReq(char* smsSender) {
   strcat_P(message, PSTR(","));
   strcat(message, longitude);
   return sendSMS(smsSender, message);
+}
+
+bool handleUseSMSReq(char* smsSender, char* smsValue) {
+  if (strcmp_P(smsValue, PSTR("usesmsplain")) == 0) {
+    EEPROM.put(USEPLAINSMS_BOOL_1, true);
+    sendSMS(smsSender, F("Using plain SMS"));
+  }
+  if (strcmp_P(smsValue, PSTR("usesmsoverip")) == 0) {
+    EEPROM.put(USEPLAINSMS_BOOL_1, false);
+    sendSMS(smsSender, F("Using SMS over IP"));
+  }
 }
 
 bool handleFollowReq(char* smsSender, char* smsValue) {
@@ -1396,10 +1430,46 @@ void deleteSMS(uint8_t msg_number) {
   debugBlink(1,3);
 }
 
-bool sendSMS(char* send_to, char* message) {
+void replaceNewlines(char* message) {
+  // strLen does NOT include terminating '\0'
+  int strLen = strlen(message);
+  int index = 0;
 
+  // Hack for Hologram.io: with SMSoverIP, we send "\\n" for newline.
+  // If we switch to plain SMSs, we need to change those back to plain "\n"
+  for (int i = 0; i < strLen; i++) {
+      if (message[i] == '\\' && message[i+1] == 'n') {
+          message[index] = '\n';
+          i++;
+      } else {
+          message[index] = message[i];
+      }
+      index++;
+  }
+  message[index] = '\0';
+}
+
+bool sendSMS(char* send_to, char* message) {
   if (simComConnectionStatus > 0)
     return false;
+
+  bool usePlainSMS = false;
+  EEPROM.get(USEPLAINSMS_BOOL_1, usePlainSMS);
+  if (usePlainSMS) {
+    replaceNewlines(message);
+    if (fona.sendSMS(send_to, message)) {
+      debugPrintln(F("  Success sending plain SMS"));
+      debugBlink(1,6);
+      updateLastResetTimes();
+      totalFailedSendSMSAttempts = 0;   
+      return true;
+    } else {
+      debugPrintln(F("  Failed to send plain SMS"));
+      debugBlink(2,11);
+      totalFailedSendSMSAttempts++;
+      return false;
+    }
+  }
 
   // Example of hologramSMSString: "Saaaabbbb+15556667777 Hello, SMS over IP World!"
   // 'S' (tells Hologram that it's an SMS):               1
@@ -1451,11 +1521,13 @@ bool sendSMS(char* send_to, char* message) {
     debugPrintln(F("  Success sending SMS"));
     debugBlink(1,2);
     updateLastResetTimes();
+    totalFailedSendSMSAttempts = 0;
     return true;
   } else {
     debugPrintln(F("  Failed to send SMS"));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(2,successCode);
+    totalFailedSendSMSAttempts++;
     return false;
   }
 }
@@ -1857,6 +1929,7 @@ void initEEPROM() {
   EEPROM.put(SERVERPORT_INT_2, SERVER_PORT);
   
   EEPROM.put(TIMEZONE_CHAR_4, "-08");
+  EEPROM.put(USEPLAINSMS_BOOL_1, false);
 
   debugPrintln(F("End initEEPROM()"));
 }
