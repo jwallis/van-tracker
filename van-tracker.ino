@@ -121,6 +121,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define SERVERNAME_CHAR_24                116
 #define SERVERPORT_INT_2                  140
 
+#define TIMEZONE_CHAR_4                   142
 
 // simComConnectionStatus status meanings
 // 0 = connected to cell network
@@ -148,7 +149,6 @@ void setup() {
   setupSimCom();
   initEEPROM();
   initSimCom();
-  debugPrintln(F("\n\nPlease update #ifdefs and restart."));
   while (1) {
     debugBlink(1,0);
   }
@@ -162,6 +162,7 @@ void setup() {
   waitUntilNetworkConnected(600);
   checkForDeadMessages();
 
+  updateClock();
   updateLastResetTimes();
 }
 
@@ -213,7 +214,6 @@ void watchDogForReset() {
   // Edge case: if simcom stops responding, we may get both times == 0.  
   // Restart.  It will then either start working or go to simComConnectionStatus == 1
   if (currentTime == 0 && lastRestartTime == 0) {
-            debugPrintln("watchDogForReset3: ");
     resetSystem();
     return;
   }
@@ -239,11 +239,105 @@ void watchDogForReset() {
   }
 }
 
+bool isClockCurrent() {
+  // When the SIM7000 is powered on, the Real Time Clock says 1980-01-01.
+  // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
+  // So, this function returns true iff the year < 80.
+  return (getTimePartInt(YEAR_INDEX) < 80);
+}
+
 void updateClock() {
+  // When the SIM7000 is powered on, the real time clock says 1980-01-01.
+  // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out.
+  // Only call this function on SIM7000 startup, not on reset.
+  
+  // If cellular network gives us the time, we're good...
+  if (isClockCurrent()) {
+    debugPrintln("clock is good 01");
+    return;
+  }
+
+  // If not, we'll try to get network time using Network Time Protocol
+  char tzOffsetStr[4];
+  char dummyString[1];
+
+  // tzOffsetStr == "-48".."+00".."+48"
+  EEPROM.get(TIMEZONE_CHAR_4, tzOffsetStr);
+  fona.enableNTPTimeSync(true, tzOffsetStr, dummyString, 1);
+
+  if (isClockCurrent()) {
+    debugPrintln("clock is good 02");
+    return;
+  }
+
+  // If not, we resort to GPS and the timezone the user has given us
+
+  // From SIM7000 AT command reference:
+  //   String type(string should be included in quotation marks) value
+  //   format is "yy/MM/dd,hh:mm:ss±zz", where characters indicate year (two last digits),
+  //   month, day, hour, minutes, seconds and time zone (indicates the difference, expressed 
+  //   in quarters of an hour, between the local time and GMT; range -47...+48). 
+  //   E.g. 6th of May 2010, 00:01:52 GMT+2 hours equals to "10/05/06,00:01:52+08".
+
+  // convert
+  // YYYYMMDDhhmmss.xxx
+  // into
+  // AT+CCLK="yy/MM/dd,hh:mm:ss±zz"
+  // AT+CCLK="20/05/01,10:11:12-22"
+  char gpsTimeStr[19];
+  if (getGPSTime(gpsTimeStr)) {
+
+    char simComTimeStr[23] = "\"";
+    simComTimeStr[1]  = gpsTimeStr[2];
+    simComTimeStr[2] = gpsTimeStr[3];
+    simComTimeStr[3] = '/';
+    simComTimeStr[4] = gpsTimeStr[4];
+    simComTimeStr[5] = gpsTimeStr[5];
+    simComTimeStr[6] = '/';
+    simComTimeStr[7] = gpsTimeStr[6];
+    simComTimeStr[8] = gpsTimeStr[7];
+    simComTimeStr[9] = ',';
+
+    int gpsHourInt = getTimePartInt(8, gpsTimeStr);
+    int tzOffsetInt = atoi(tzOffsetStr) / 4;  // change -48..48 to -12..12
+    int localHourInt;
+    char localHourStr[3];
+
+    // add utc time + offset to get local time... with some caveats
+    if (gpsHourInt + tzOffsetInt > 23)
+      localHourInt = gpsHourInt + tzOffsetInt - 24;
+    else {
+      if (gpsHourInt + tzOffsetInt < 0)
+        localHourInt = gpsHourInt + tzOffsetInt + 24;
+      else
+        localHourInt = gpsHourInt + tzOffsetInt;
+    }
+
+    itoa(localHourInt, localHourStr, 10);
+    insertZero(localHourStr);
+
+    simComTimeStr[10] = localHourStr[0];
+    simComTimeStr[11] = localHourStr[1];
+
+    simComTimeStr[12] = ':';
+    simComTimeStr[13] = gpsTimeStr[10];
+    simComTimeStr[14] = gpsTimeStr[11];
+    simComTimeStr[15] = ':';
+    simComTimeStr[16] = gpsTimeStr[12];
+    simComTimeStr[17] = gpsTimeStr[13];
+
+    simComTimeStr[18] = tzOffsetStr[0];
+    simComTimeStr[19] = tzOffsetStr[1];
+    simComTimeStr[20] = tzOffsetStr[2];
+
+    simComTimeStr[21] = '\"';
+    simComTimeStr[22] = '\0';
+
+    fona.setTime(simComTimeStr);
+  }
 }
 
 void updateLastResetTimes() {
-  updateClock();
   lastRestartHour = getTimePartInt(HOUR_INDEX);
   lastRestartMinute = getTimePartInt(MINUTE_INDEX);
 }
@@ -444,7 +538,18 @@ void handleSMSInput() {
       if (handleBothReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
-    }    
+    } 
+
+    // "contains" match
+    if (strstr_P(smsValue, PSTR("time"))) {
+      // Why send in hours and not the timezone?  If daylight savings goes away in the future, doing calculations based on dates will break
+      // Hopefully this is easy for the user
+      handleTimeReq(smsSender, smsValue);
+
+      // delete regardless, don't retry this one (clock might get set wrong)
+      deleteSMS(smsSlotNumber);
+      continue;
+    } 
 
     // "contains" match
     if (strstr_P(smsValue, PSTR("kill"))) {
@@ -741,6 +846,91 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));  
 }
 
+bool handleTimeReq(char* smsSender, char* smsValue) {
+  char localHourStr[4];
+  int localHourInt = -1;
+
+  if (strstr_P(smsValue, PSTR("time set "))) {
+    getOccurrenceInDelimitedString(smsValue, localHourStr, 3, ' ', 3);
+    localHourInt = atoi(localHourStr);
+
+    // check for invalid atoi()
+    if (localHourInt == 0 && localHourStr[0] != '0')
+      localHourInt = -1;
+  }
+
+  if (localHourInt >= 0 and localHourInt < 24) {
+    char ntpTimeStr[22];
+    char tzOffsetStr[4];
+    int tzOffsetInt;
+
+    // get current UTC time into ntpTimeStr
+    fona.enableNTPTimeSync(true, "00", ntpTimeStr, 22);
+
+    // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
+    int utcHourInt = getTimePartInt(12, ntpTimeStr);
+  
+    // set the offset to the difference of what the user sent in and the current utc hour... with some caveats
+    if (localHourInt - utcHourInt > 12)
+      tzOffsetInt = localHourInt - utcHourInt - 24;
+    else {
+      if (localHourInt - utcHourInt < -12)
+        tzOffsetInt = localHourInt - utcHourInt + 24;
+      else
+        tzOffsetInt = localHourInt - utcHourInt;
+    }
+
+    // From SIM7000 AT command reference:
+    //   String type(string should be included in quotation marks) value
+    //   format is "yy/MM/dd,hh:mm:ss±zz", where characters indicate year (two last digits),
+    //   month, day, hour, minutes, seconds and time zone (indicates the difference, expressed 
+    //   in quarters of an hour, between the local time and GMT; range -47...+48). 
+    //   E.g. 6th of May 2010, 00:01:52 GMT+2 hours equals to "10/05/06,00:01:52+08".
+    tzOffsetInt = tzOffsetInt * 4;
+    itoa(tzOffsetInt, tzOffsetStr, 10);
+
+    // change "-5" to "-05"
+    if (tzOffsetInt > -10 && tzOffsetInt < 0) {
+      tzOffsetStr[3] = '\0';
+      tzOffsetStr[2] = tzOffsetStr[1];
+      tzOffsetStr[1] = '0';
+    }
+    // change "4" to "+04"
+    if (tzOffsetInt >=0 && tzOffsetInt < 10) {
+      tzOffsetStr[3] = '\0';
+      tzOffsetStr[2] = tzOffsetStr[0];
+      tzOffsetStr[1] = '0';
+      tzOffsetStr[0] = '+';
+    }
+    // change "20" to "+20"
+    if (tzOffsetInt > 10) {
+      tzOffsetStr[3] = '\0';
+      tzOffsetStr[2] = tzOffsetStr[1];
+      tzOffsetStr[1] = tzOffsetStr[0];
+      tzOffsetStr[0] = '+';
+    }
+
+    EEPROM.put(TIMEZONE_CHAR_4, tzOffsetStr);
+  
+    // set the clock to the right time using the offset.  Don't worry, ntpTimeStr is not being used to sync time, it's just being overwritten here
+    if (fona.enableNTPTimeSync(true, tzOffsetStr, ntpTimeStr, 22))
+      updateLastResetTimes();
+
+    // code reuse :)
+    handleStatusReq(smsSender);
+  } else {
+    debugPrintln("BAD");
+    char currentTimeStr[23];
+    getTime(currentTimeStr);
+    char message[105] = "Network Time: ";
+
+    strcat(message, currentTimeStr);
+    strcat_P(message, PSTR("\\nTry \"time set\" plus: (current hour of the day 0-23)"));
+    sendSMS(smsSender, message);
+  }
+  return true;
+}
+
 bool handleBothReq(char* smsSender, char* smsValue) {
   return handleKillSwitchReq(smsSender, smsValue, true) && handleGeofenceReq(smsSender, smsValue, true);
 }
@@ -948,10 +1138,8 @@ bool setGPS(bool tf) {
   // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
     if (fona.enableGPSSIM7000(false)) {
-      debugBlink(1,10);
       return true;
     }
-    debugBlink(1,9);
     debugPrintln(F("Failed to turn off GPS"));
     return false;
   }
@@ -1033,6 +1221,27 @@ bool getGPSLatLon(char* latitude, char* longitude) {
 
   latitude[0] = '\0';
   longitude[0] = '\0';
+  return false;
+}
+
+bool getGPSTime(char* timeStr) {
+  char gpsString[120];
+
+  if (setGPS(true)){
+    // full string:
+    // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    for (short i = 0; i < 10; i++) {
+      fona.getGPS(0, gpsString, 120);
+  
+      getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
+  
+      if (strlen(gpsString) > 13 && strstr_P(timeStr, PSTR("20"))) {
+        return true;
+      }
+    }
+  }
+
+  timeStr[0] = '\0';
   return false;
 }
 
@@ -1529,6 +1738,7 @@ void setupSimCom() {
       debugBlink(0,4);
       return;
     }
+    delay(10000);
   }
   simComConnectionStatus = 1;
 }
@@ -1550,7 +1760,6 @@ void waitUntilNetworkConnected(short secondsToWait) {
   for (int i = 0; i < secondsToWait; i++) {
     debugPrint(F("."));
     netConn = fona.getNetworkStatusSIM7000();
-    
 
     // netConn status meanings:
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
@@ -1646,6 +1855,8 @@ void initEEPROM() {
   EEPROM.put(DEVKEY_CHAR_9, "00000000");
   EEPROM.put(SERVERNAME_CHAR_24, SERVER_NAME);
   EEPROM.put(SERVERPORT_INT_2, SERVER_PORT);
+  
+  EEPROM.put(TIMEZONE_CHAR_4, "-08");
 
   debugPrintln(F("End initEEPROM()"));
 }
