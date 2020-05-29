@@ -452,23 +452,25 @@ void watchDogForGeofence() {
 
   char currentLat[12];
   char currentLon[12];
+  char currentSpeed[4];
+  char currentDir[4];
 
-  getGPSLatLon(currentLat, currentLon);
-
-  if (outsideGeofence(currentLat, currentLon)) {
-    sendGeofenceWarning(false, currentLat, currentLon);
+  if (getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir) && outsideGeofence(currentLat, currentLon)) {
+    sendGeofenceWarning(false, currentLat, currentLon, currentSpeed, currentDir);
   }
 }
 
 void sendGeofenceWarning() {
   char currentLat[12];
   char currentLon[12];
+  char currentSpeed[4];
+  char currentDir[4];
 
-  getGPSLatLon(currentLat, currentLon);
-  sendGeofenceWarning(true, currentLat, currentLon);
+  getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir);
+  sendGeofenceWarning(true, currentLat, currentLon, currentSpeed, currentDir);
 }
 
-void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
+void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* currentSpeed, char* currentDir) {
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char ownerPhoneNumber[15];
@@ -476,12 +478,12 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  char message[139];      // SMS max len = 140
+  char message[141];      // SMS max len = 140
 
   if (follow)
     strcpy_P(message, PSTR("FOLLOW MODE"));
   else
-    strcpy_P(message, PSTR("GEOFENCE WARNING!"));
+    strcpy_P(message, PSTR("FENCE WARNING!"));
 
   strcat_P(message, PSTR("\\nCurrent:\\ngoogle.com/search?q="));
   strcat(message, currentLat);
@@ -491,6 +493,10 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon) {
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
+  strcat_P(message, PSTR("\\nSpeed: "));
+  strcat(message, currentSpeed);
+  strcat_P(message, PSTR("\\nDir: "));
+  strcat(message, currentDir);
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
@@ -862,16 +868,24 @@ bool handleStatusReq(char* smsSender) {
 }
 
 bool handleLocReq(char* smsSender) {
-  char message[54];
+  char message[80];
   char latitude[12];
   char longitude[12];
+  char speed[4];
+  char dir[4];
 
-  getGPSLatLon(latitude, longitude);
-
-  strcpy_P(message, PSTR("google.com/search?q="));
-  strcat(message, latitude);
-  strcat_P(message, PSTR(","));
-  strcat(message, longitude);
+  if (getGPSLatLonSpeedDir(latitude, longitude, speed, dir)) {
+    strcpy_P(message, PSTR("google.com/search?q="));
+    strcat(message, latitude);
+    strcat_P(message, PSTR(","));
+    strcat(message, longitude);
+    strcat_P(message, PSTR("\\nSpeed: "));
+    strcat(message, speed);
+    strcat_P(message, PSTR("\\nDir: "));
+    strcat(message, dir);
+  } else {
+    strcpy_P(message, PSTR("Unable to get GPS signal"));
+  }
   return sendSMS(smsSender, message);
 }
 
@@ -913,11 +927,11 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
 
   if (localHourInt >= 0 and localHourInt < 24) {
     char ntpTimeStr[22];
-    char tzOffsetStr[4];
+    char tzOffsetStr[4] = "00";
     int tzOffsetInt;
 
     // get current UTC time into ntpTimeStr
-    fona.enableNTPTimeSync(true, "00", ntpTimeStr, 22);
+    fona.enableNTPTimeSync(true, tzOffsetStr, ntpTimeStr, 22);
 
     // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
     int utcHourInt = getTimePartInt(12, ntpTimeStr);
@@ -1250,6 +1264,10 @@ bool setGPS(bool tf) {
 }
 
 bool getGPSLatLon(char* latitude, char* longitude) {
+  return getGPSLatLonSpeedDir(latitude, longitude, NULL, NULL);
+}
+  
+bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
   char gpsString[120];
 
   if (setGPS(true)){
@@ -1261,6 +1279,10 @@ bool getGPSLatLon(char* latitude, char* longitude) {
   
       getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
       getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
+      if (speed != NULL) {
+        getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
+        getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
+      }
   
       // We have see errors where the lat,long come back as garbage like "9,43"
       // Leave the != NULL in there in case the '.' is at the 0th position, which I think is valid
