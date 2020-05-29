@@ -190,6 +190,9 @@ void loop() {
   // 1 is very bad - could not connect to SIM7000
   if (simComConnectionStatus == 1) {
 
+    // if kill switch is always on, turn on, otherwise this won't do anything
+    watchDogForKillSwitch();
+
     // Delay 30 minutes and reset.  This loop takes about 7 seconds. 250 loops * 7 seconds = 30 minutes.
     for (short i = 0; i < 250; i++) {
       delay(2000);
@@ -997,14 +1000,11 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
   validMessage = setEnableAndHours(smsValue, KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3, killSwitchEnabled, killSwitchStart, killSwitchEnd);
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
-    //  Yay only 2k of RAM
-    strcpy_P(message, PSTR("Kill: "));
     if (killSwitchEnabled)
-      strcat_P(message, PSTR("En"));
+      strcat_P(message, PSTR("Kill: Enabled\\nHours: "));
     else
-      strcat_P(message, PSTR("Dis"));
+      strcat_P(message, PSTR("Kill: Disabled\\nHours: "));
 
-    strcat_P(message, PSTR("abled\\nHours: "));
     strcat(message, killSwitchStart);
     strcat_P(message, PSTR("-"));
     strcat(message, killSwitchEnd);
@@ -1077,13 +1077,11 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
     //    else
     //      sprintf(message, "DISABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
 
-    strcpy_P(message, PSTR("Fence: "));
     if (geofenceEnabled)
-      strcat_P(message, PSTR("En"));
+      strcat_P(message, PSTR("Fence: Enabled\\nHours: "));
     else
-      strcat_P(message, PSTR("Dis"));
+      strcat_P(message, PSTR("Fence: Disabled\\nHours: "));
 
-    strcat_P(message, PSTR("abled\\nHours: "));
     strcat(message, geofenceStart);
     strcat_P(message, PSTR("-"));
     strcat(message, geofenceEnd);
@@ -1288,7 +1286,7 @@ bool getGPSTime(char* timeStr) {
   
       getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
   
-      if (strlen(gpsString) > 13 && strstr_P(timeStr, PSTR("20"))) {
+      if (strlen(gpsString) > 40 && strstr_P(timeStr, PSTR("1,1,20"))) {
         return true;
       }
     }
@@ -1396,9 +1394,12 @@ bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
   EEPROM.get(eepromStart, startHour);
   EEPROM.get(eepromEnd, endHour);
 
-  // if start and end are the same, the fence is ALWAYS on
+  // if start and end are the same, the fence/kill switch is ALWAYS on
   if (strcmp(startHour, endHour) == 0)
     return true;
+
+  if (!isClockValid())
+    return false;
 
   short currentHour = getTimePartInt(HOUR_INDEX);
 
