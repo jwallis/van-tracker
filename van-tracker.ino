@@ -273,7 +273,6 @@ void updateClock() {
   
   // If cellular network gives us the time, we're good...
   if (isClockValid()) {
-    debugPrintln("clock is good 01");
     return;
   }
 
@@ -286,7 +285,6 @@ void updateClock() {
   fona.enableNTPTimeSync(true, tzOffsetStr, dummyString, 1);
 
   if (isClockValid()) {
-    debugPrintln("clock is good 02");
     return;
   }
 
@@ -357,10 +355,8 @@ void updateClock() {
   }
 
   
-  if (isClockValid()) {
-    debugPrintln("clock is good 03");
-  } else {
-    // if not, we set connection to "very bad"
+  if (!isClockValid()) {
+    // set connection to "very bad"
     simComConnectionStatus = 2;
   }
 }
@@ -986,7 +982,6 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
     // code reuse :)
     handleStatusReq(smsSender);
   } else {
-    debugPrintln("BAD");
     char currentTimeStr[23];
     getTime(currentTimeStr);
     char message[105] = "Network Time: ";
@@ -1206,7 +1201,6 @@ bool setGPS(bool tf) {
     if (fona.enableGPSSIM7000(false)) {
       return true;
     }
-    debugPrintln(F("Failed to turn off GPS"));
     return false;
   }
 
@@ -1230,7 +1224,6 @@ bool setGPS(bool tf) {
 
   // error, give up
   if (fona.GPSstatusSIM7000() < 0) {
-    debugPrintln(F("Failed to turn on GPS"));
     debugBlink(1,5);
     return false;
   }
@@ -1259,7 +1252,6 @@ bool setGPS(bool tf) {
   }
 
   // no fix, give up
-  debugPrintln(F("Failed to get GPS fix"));
   debugBlink(1,7);
   return false;
 }
@@ -1359,9 +1351,6 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
   dist_calc = (2 * atan2(sqrt(dist_calc), sqrt(1.0 - dist_calc)));
   dist_calc *= 20902231.64; //Converting to feet
 
-  debugPrint(F("Distance in feet: "));
-  debugPrintln(dist_calc, 2);
-
   return dist_calc > geofenceRadiusFloat;
 }
 
@@ -1455,21 +1444,17 @@ void checkForDeadMessages() {
   short numberOfSMSs = fona.getNumSMSSIM7000();
   if (numberOfSMSs == 10) {
     fona.deleteAllSMS();
-    debugPrintln(F("SMS storage FULL. Deleting ALL SMS"));
   }
 }
 
 void deleteSMS(uint8_t msg_number) {
   for (int i = 0; i < 5; i++) {
-    debugPrintln(F("  Try to delete SMS"));
     if (fona.deleteSMS(msg_number)) {
-      debugPrintln(F("  Success deleting SMS"));
       debugBlink(1,4);
       return;
     }
     delay(2000);
   }
-  debugPrintln(F("  Failed to delete SMS"));
   debugBlink(1,3);
 }
 
@@ -1501,13 +1486,11 @@ bool sendSMS(char* send_to, char* message) {
   if (usePlainSMS) {
     replaceNewlines(message);
     if (fona.sendSMS(send_to, message)) {
-      debugPrintln(F("  Success sending plain SMS"));
       debugBlink(1,6);
       updateLastResetTimes();
       totalFailedSendSMSAttempts = 0;   
       return true;
     } else {
-      debugPrintln(F("  Failed to send plain SMS"));
       debugBlink(2,11);
       totalFailedSendSMSAttempts++;
       return false;
@@ -1536,7 +1519,6 @@ bool sendSMS(char* send_to, char* message) {
   // we delete the incoming SMS so we don't try to send the msg indefinitely
   if (strstr_P(devKey, PSTR("00000000"))) {
     debugBlink(2,9);
-    debugPrintln(F("DEVKEY NOT SET! DELETING SMS!"));
     return true;
   }
   
@@ -1547,27 +1529,24 @@ bool sendSMS(char* send_to, char* message) {
   strcat(hologramSMSString, message);
   hologramSMSStringLength = strlen(hologramSMSString);
   
-  debugPrintln(F("  Try to send SMS:"));
-  debugPrintln(serverName);
-  debugPrintln(serverPort);
-  debugPrintln(hologramSMSStringLength);
+  debugPrint(F("  SMS:"));
   debugPrintln(hologramSMSString);
 
   uint16_t successCode = fona.ConnectAndSendToHologram(serverName, serverPort, hologramSMSString, hologramSMSStringLength);
 
-  debugPrint(F("  Success code: "));
+  debugPrint(F("  Code: "));
   itoa(successCode, serverName, 10);
   debugPrintln(serverName);
   fona.TCPshut();
 
   if (successCode == 0) {
-    debugPrintln(F("  Success sending SMS"));
+    debugPrintln(F("  Succ."));
     debugBlink(1,2);
     updateLastResetTimes();
     totalFailedSendSMSAttempts = 0;
     return true;
   } else {
-    debugPrintln(F("  Failed to send SMS"));
+    debugPrintln(F("  Fail."));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(2,successCode);
     totalFailedSendSMSAttempts++;
@@ -1675,7 +1654,6 @@ void insertZero(char *in) {
 
 void sendRawCommand(const __FlashStringHelper* command) {
   delay(200);
-  debugPrintln(command);
   fona.println(command);
   delay(1000);
 
@@ -1838,17 +1816,16 @@ void setGeofencePins(bool tf) {
 }
 
 void setupSimCom() {
-  debugPrint(F("Connect to SimCom"));
+  debugPrint(F("SimCom"));
   // let SimCom module start up before we try to connect
   delay(5000);
   SimComSerial->begin(9600);
 
   for (int i = 0; i < 3; i++) {
     fona.beginSIM7000(*SimComSerial);
-    debugPrint(F("."));
 
     if (fona.getNumSMSSIM7000() >= 0) {
-      debugPrintln(F("\nSimCom OK"));
+      debugPrintln(F("\nSucc"));
       simComConnectionStatus = 2;
       debugBlink(0,4);
       return;
@@ -1864,7 +1841,7 @@ void waitUntilNetworkConnected(short secondsToWait) {
     return;
   }
 
-  debugPrint(F("Connect to network"));
+  debugPrint(F("Network"));
   short netConn;
 
   fona.setNetworkSettings(APN, F(""), F(""));
@@ -1873,7 +1850,6 @@ void waitUntilNetworkConnected(short secondsToWait) {
   secondsToWait = secondsToWait/2;
   
   for (int i = 0; i < secondsToWait; i++) {
-    debugPrint(F("."));
     netConn = fona.getNetworkStatusSIM7000();
 
     // netConn status meanings:
@@ -1891,7 +1867,7 @@ void waitUntilNetworkConnected(short secondsToWait) {
     // 3 = Cell network registration denied
     // 4 = Unknown
     if (netConn == 1 || netConn == 5) {
-      debugPrintln(F("\nConnected"));
+      debugPrintln(F("\nSucc"));
       simComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
       fona.TCPshut();  // just in case GPRS is still on for some reason, save power
@@ -2124,10 +2100,6 @@ void getEEPROM() {
   Serial.write ("SERVERPORT_INT_2: ");
   itoa(tempi, tempc, 10);
   debugPrintln(tempc);
-
-  EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
-  Serial.write ("LOCKDOWNENABLED_BOOL_1: ");
-  debugPrintln(tempb);
 }
 
 void checkSerialInput() {
@@ -2172,7 +2144,6 @@ void handleSerialInput(String command) {
     
     delay(2000);    
 
-    debugPrintln(F("Serial:"));
     while (1) {
       while (Serial.available()) {
         delay(1);
@@ -2202,9 +2173,7 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   toLower(smsValue);
 
   debugPrintln(F("-read SMS-"));
-  debugPrintln(smsSender);
   debugPrintln(smsValue);
-  debugPrintln(F(""));
 
   if (strstr_P(smsValue, PSTR("gps")) || strstr_P(smsValue, PSTR("loc"))) {
     handleLocReq(smsSender);
