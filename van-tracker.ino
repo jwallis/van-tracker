@@ -132,13 +132,12 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 // 2 = Not registered on cell network
 // 3 = Cell network registration denied
 // 4 = Unknown
-short simComConnectionStatus = 2;
-short totalFailedSendSMSAttempts = 0;
+int8_t simComConnectionStatus = 2;
+int8_t totalFailedSendSMSAttempts = 0;
 
-short lastRestartHour = -1;
-short lastRestartMinute = -1;
-short lastGPSQueryMinute = -1;
-short lastGeofenceWarningMinute = -1;
+int16_t lastRestartTime = -1;
+int8_t lastGPSQueryMinute = -1;
+int8_t lastGeofenceWarningMinute = -1;
 
 volatile bool killSwitchOnVolatile = false;
 volatile bool startAttemptedWhileKillSwitchOnVolatile = false;
@@ -168,7 +167,7 @@ void setup() {
   checkForDeadMessages();
 
   updateClock();
-  updateLastResetTimes();
+  updateLastResetTime();
 }
 
 void loop() {
@@ -195,7 +194,7 @@ void loop() {
     watchDogForKillSwitch();
 
     // Delay 30 minutes and reset.  This loop takes about 7 seconds. 250 loops * 7 seconds = 30 minutes.
-    for (short i = 0; i < 250; i++) {
+    for (int16_t i = 0; i < 250; i++) {
       delay(2000);
       debugBlink(3,simComConnectionStatus);
     }
@@ -216,8 +215,7 @@ void loop() {
 }
 
 void watchDogForReset() {
-  short currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
-  short lastRestartTime = lastRestartHour * 60 + lastRestartMinute;
+  int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // Edge case: if simcom stops responding, we may get both times == 0.  
   // Restart.  It will then either start working or go to simComConnectionStatus == 1
@@ -316,9 +314,9 @@ void updateClock() {
     simComTimeStr[8] = gpsTimeStr[7];
     simComTimeStr[9] = ',';
 
-    int gpsHourInt = getTimePartInt(8, gpsTimeStr);
-    int tzOffsetInt = atoi(tzOffsetStr) / 4;  // change -48..48 to -12..12
-    int localHourInt;
+    int8_t gpsHourInt = getTimePartInt(8, gpsTimeStr);
+    int8_t tzOffsetInt = atoi(tzOffsetStr) / 4;  // change -48..48 to -12..12
+    int8_t localHourInt;
     char localHourStr[3];
 
     // add utc time + offset to get local time... with some caveats
@@ -361,9 +359,8 @@ void updateClock() {
   }
 }
 
-void updateLastResetTimes() {
-  lastRestartHour = getTimePartInt(HOUR_INDEX);
-  lastRestartMinute = getTimePartInt(MINUTE_INDEX);
+void updateLastResetTime() {
+  lastRestartTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 }
 
 void resetSystem() {
@@ -372,7 +369,7 @@ void resetSystem() {
   setupSimCom();
   waitUntilNetworkConnected(120);
 
-  updateLastResetTimes();  
+  updateLastResetTime();  
 }
 
 void watchDogForTurnOffGPS() {
@@ -381,7 +378,7 @@ void watchDogForTurnOffGPS() {
   if (lastGPSQueryMinute == -1)
     return;
 
-  short currentMinuteInt = getTimePartInt(MINUTE_INDEX);
+  int8_t currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
   // if it's been > 10 min, take action (turn off gps to save power)
 
@@ -428,7 +425,7 @@ void watchDogForGeofence() {
     return;
   }
 
-  short currentMinuteInt = getTimePartInt(MINUTE_INDEX);
+  int8_t currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
   // If the geofence was broken...
   if (lastGeofenceWarningMinute != -1) {
@@ -515,7 +512,7 @@ void checkSMSInput() {
 }
 
 void handleSMSInput() {
-  short numberOfSMSs = fona.getNumSMSSIM7000();
+  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
 
   char smsSender[15];
   char smsValue[51];
@@ -820,7 +817,7 @@ bool handleUnlockReq(char* smsSender) {
 }
 
 bool handleStatusReq(char* smsSender) {
-  uint8_t rssi;
+  int8_t rssi;
   char rssiStr[4];
   char currentTimeStr[23];
   char message[141];
@@ -911,7 +908,7 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
 
 bool handleTimeReq(char* smsSender, char* smsValue) {
   char localHourStr[4];
-  int localHourInt = -1;
+  int8_t localHourInt = -1;
 
   if (strstr_P(smsValue, PSTR("time set "))) {
     getOccurrenceInDelimitedString(smsValue, localHourStr, 3, ' ', 3);
@@ -925,13 +922,13 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
   if (localHourInt >= 0 and localHourInt < 24) {
     char ntpTimeStr[22];
     char tzOffsetStr[4] = "00";
-    int tzOffsetInt;
+    int8_t tzOffsetInt;
 
     // get current UTC time into ntpTimeStr
     fona.enableNTPTimeSync(true, tzOffsetStr, ntpTimeStr, 22);
 
     // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
-    int utcHourInt = getTimePartInt(12, ntpTimeStr);
+    int8_t utcHourInt = getTimePartInt(12, ntpTimeStr);
   
     // set the offset to the difference of what the user sent in and the current utc hour... with some caveats
     if (localHourInt - utcHourInt > 12)
@@ -977,7 +974,7 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
   
     // set the clock to the right time using the offset.  Don't worry, ntpTimeStr is not being used to sync time, it's just being overwritten here
     if (fona.enableNTPTimeSync(true, tzOffsetStr, ntpTimeStr, 22))
-      updateLastResetTimes();
+      updateLastResetTime();
 
     // code reuse :)
     handleStatusReq(smsSender);
@@ -1212,10 +1209,8 @@ bool setGPS(bool tf) {
   if (fona.GPSstatusSIM7000() >= 2)
     return true;
 
-  int8_t status;
-
   // Keep trying to get a valid (non-error) response. Maybe we should turn off/on?
-  for (int i = 1; i < 30; i++) {
+  for (int8_t i = 1; i < 30; i++) {
     if (fona.GPSstatusSIM7000() >= 0) {
       break;
     }
@@ -1237,7 +1232,7 @@ bool setGPS(bool tf) {
   char currentLon[12];
 
   // wait up to 90s to get GPS fix
-  for (int j = 0; j < 23; j++) {
+  for (int8_t j = 0; j < 23; j++) {
     if (fona.GPSstatusSIM7000() >= 2) {
       debugBlink(1,8);
 
@@ -1266,7 +1261,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
   if (setGPS(true)){
     // full string:
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-    for (short i = 0; i < 10; i++) {
+    for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(0, gpsString, 120);
       lastGPSQueryMinute = getTimePartInt(MINUTE_INDEX);
   
@@ -1296,7 +1291,7 @@ bool getGPSTime(char* timeStr) {
   if (setGPS(true)){
     // full string:
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-    for (short i = 0; i < 10; i++) {
+    for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(0, gpsString, 120);
   
       getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
@@ -1360,7 +1355,7 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
 void getTime(char* currentTimeStr) {
 
   // sets currentTime to "20/01/31,17:03:55-20" INCLUDING quotes  
-  for (short i = 0; i < 3; i++) {
+  for (int8_t i = 0; i < 3; i++) {
     fona.getTime(currentTimeStr, 23);
 
     // if time string looks good...
@@ -1373,13 +1368,13 @@ void getTime(char* currentTimeStr) {
   }
 }
 
-int getTimePartInt(int index) {
+int8_t getTimePartInt(int16_t index) {
   char timeStr[23];
   getTime(timeStr);
   return getTimePartInt(index, timeStr);
 }
 
-int getTimePartInt(int index, char* timeStr) {
+int8_t getTimePartInt(int16_t index, char* timeStr) {
   // get a 2-character "part" of the time string as an int, "part" being year, minute, hour, etc.
   char timePartStr[3];
 
@@ -1392,7 +1387,7 @@ int getTimePartInt(int index, char* timeStr) {
   return atoi(timePartStr);
 }
 
-bool isActive(short eepromEnabled, short eepromStart, short eepromEnd) {
+bool isActive(int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd) {
   // takes into account both "enabled" option
   // as well as the "hours" 1am-8am option
 
@@ -1441,14 +1436,14 @@ void checkForDeadMessages() {
   // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
   // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
-  short numberOfSMSs = fona.getNumSMSSIM7000();
+  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
   if (numberOfSMSs == 10) {
     fona.deleteAllSMS();
   }
 }
 
-void deleteSMS(uint8_t msg_number) {
-  for (int i = 0; i < 5; i++) {
+void deleteSMS(int8_t msg_number) {
+  for (int8_t i = 0; i < 5; i++) {
     if (fona.deleteSMS(msg_number)) {
       debugBlink(1,4);
       return;
@@ -1460,12 +1455,12 @@ void deleteSMS(uint8_t msg_number) {
 
 void replaceNewlines(char* message) {
   // strLen does NOT include terminating '\0'
-  int strLen = strlen(message);
-  int index = 0;
+  int16_t strLen = strlen(message);
+  int16_t index = 0;
 
   // Hack for Hologram.io: with SMSoverIP, we send "\\n" for newline.
   // If we switch to plain SMSs, we need to change those back to plain "\n"
-  for (int i = 0; i < strLen; i++) {
+  for (int16_t i = 0; i < strLen; i++) {
       if (message[i] == '\\' && message[i+1] == 'n') {
           message[index] = '\n';
           i++;
@@ -1487,7 +1482,7 @@ bool sendSMS(char* send_to, char* message) {
     replaceNewlines(message);
     if (fona.sendSMS(send_to, message)) {
       debugBlink(1,6);
-      updateLastResetTimes();
+      updateLastResetTime();
       totalFailedSendSMSAttempts = 0;   
       return true;
     } else {
@@ -1506,11 +1501,11 @@ bool sendSMS(char* send_to, char* message) {
   // '\0' (it's null-terminated C string!):               1
 
   char hologramSMSString[165];
-  uint16_t hologramSMSStringLength;
+  int16_t hologramSMSStringLength;
 
   char devKey[9] = "";
   char serverName[24] = "";
-  uint16_t serverPort;
+  int16_t serverPort;
   EEPROM.get(DEVKEY_CHAR_9, devKey);
   EEPROM.get(SERVERNAME_CHAR_24, serverName);
   EEPROM.get(SERVERPORT_INT_2, serverPort);
@@ -1532,7 +1527,7 @@ bool sendSMS(char* send_to, char* message) {
   debugPrint(F("  SMS:"));
   debugPrintln(hologramSMSString);
 
-  uint16_t successCode = fona.ConnectAndSendToHologram(serverName, serverPort, hologramSMSString, hologramSMSStringLength);
+  int8_t successCode = fona.ConnectAndSendToHologram(serverName, serverPort, hologramSMSString, hologramSMSStringLength);
 
   debugPrint(F("  Code: "));
   itoa(successCode, serverName, 10);
@@ -1542,7 +1537,7 @@ bool sendSMS(char* send_to, char* message) {
   if (successCode == 0) {
     debugPrintln(F("  Succ."));
     debugBlink(1,2);
-    updateLastResetTimes();
+    updateLastResetTime();
     totalFailedSendSMSAttempts = 0;
     return true;
   } else {
@@ -1564,14 +1559,14 @@ bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 //HELPERS
 ///////////////////////////////////////////////////////////////////////////////////////////
-void debugBlink(short longBlinks, short shortBlinks) {
-  for (int cnt=0; cnt < longBlinks; cnt++) {
+void debugBlink(int8_t longBlinks, int8_t shortBlinks) {
+  for (int8_t cnt=0; cnt < longBlinks; cnt++) {
     digitalWrite(13, HIGH);
     delay(1000);
     digitalWrite(13, LOW);
     delay(300);    
   }
-  for (int cnt=0; cnt < shortBlinks; cnt++) {
+  for (int8_t cnt=0; cnt < shortBlinks; cnt++) {
     digitalWrite(13, HIGH);
     delay(50);
     digitalWrite(13, LOW);
@@ -1595,7 +1590,7 @@ bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   return (hoursStart[0] && hoursEnd[0]);
 }
 
-bool setEnableAndHours(char* smsValue, short eepromEnabled, short eepromStart, short eepromEnd, bool &enabled, char* hoursStart, char* hoursEnd) {
+bool setEnableAndHours(char* smsValue, int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd, bool &enabled, char* hoursStart, char* hoursEnd) {
   bool validMessage = false;
 
   if (strstr_P(smsValue, PSTR("enable"))) {
@@ -1623,15 +1618,15 @@ bool setEnableAndHours(char* smsValue, short eepromEnabled, short eepromStart, s
   return validMessage;
 }
 
-void writeCStringToEEPROM(int eepromAddress, char* data) {
-  int i=0;
+void writeCStringToEEPROM(int16_t eepromAddress, char* data) {
+  int16_t i=0;
   for (;data[i]; i++) {
     EEPROM.put(eepromAddress+i, data[i]);
   }
   EEPROM.put(eepromAddress+i, '\0');
 }
 
-void setSimComFuntionality(short func) {
+void setSimComFuntionality(int8_t func) {
   if (func == 0) {
     setGPS(false);
     sendRawCommand(F("AT+CFUN=0,0"));
@@ -1664,7 +1659,7 @@ void sendRawCommand(const __FlashStringHelper* command) {
 }
 
 void toLower(char* str) {
-  for (int i = 0; str[i]; i++)
+  for (int16_t i = 0; str[i]; i++)
     str[i] = tolower(str[i]);
 }
 
@@ -1673,20 +1668,20 @@ void addPlusToPhoneNumber(char* phoneNumber) {
   // out: "+15554443333\0\0\0"
   phoneNumber[14] = '\0';  // phoneNumber is of size 15
 
-  for (int i = 14; i > 0; i--) {
+  for (int8_t i = 14; i > 0; i--) {
     phoneNumber[i] = phoneNumber[i-1];
   }
   phoneNumber[0] = '+';
 }
 
-bool getNumberFromString(char* in, char* out, short maxLen) {
+bool getNumberFromString(char* in, char* out, int8_t maxLen) {
   // if in == "aaa+123b-b4b5"
   // then out = "12345"
   // be sure to leave room for '\0'
   bool foundNumber = false;
-  short outCount = 0;
+  int16_t outCount = 0;
 
-  for (int i = 0; in[i] && outCount < maxLen-1; i++) {
+  for (int16_t i = 0; in[i] && outCount < maxLen-1; i++) {
     if (in[i] >= '0' && in[i] <= '9') {
       foundNumber = true;
       out[outCount] = in[i];
@@ -1701,10 +1696,10 @@ bool getNumberFromString(char* in, char* out, short maxLen) {
 void cleanString(char* stringToClean, char charToClean) {
   // in:  "  some  string   with stuff  "
   // out: "some string with stuff"
-  short outCount = 0;
+  int16_t outCount = 0;
   bool lastCharWasCharToClean = false;
   
-  for (int i = 0; stringToClean[i]; i++) {
+  for (int16_t i = 0; stringToClean[i]; i++) {
     if (stringToClean[i] == charToClean) {
       if (outCount == 0)                        // seeing ' ' at the beginning of the string, skip it
         continue;
@@ -1729,12 +1724,12 @@ void cleanString(char* stringToClean, char charToClean) {
     stringToClean[outCount] = '\0';
 }
 
-bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber, char delim) {
+bool getOccurrenceInDelimitedString(char* in, char* out, int8_t occurrenceNumber, char delim) {
   // yeah I know.  Trying to save program space.
   return getOccurrenceInDelimitedString(in, out, occurrenceNumber, delim, 9999);
 }
 
-bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber, char delim, short maxLength) {
+bool getOccurrenceInDelimitedString(char* in, char* out, int8_t occurrenceNumber, char delim, int16_t maxLength) {
   // occurrenceNumber is 1-based, not 0-based
   // maxLength does NOT include ending '\0'
 
@@ -1745,13 +1740,13 @@ bool getOccurrenceInDelimitedString(char* in, char* out, short occurrenceNumber,
   // be sure to leave room for '\0'
 
   // maxLength is due to the bug in the SIM7000A for strings like "aa{a" it'll tell us it's 5 chars long. See https://forum.arduino.cc/index.php?topic=660925.0
-  short delimCount = 0;
-  short outCount = 0;
+  int16_t delimCount = 0;
+  int16_t outCount = 0;
   bool foundOccurrence = false;
 
   cleanString(in, delim);
 
-  for (int i = 0; in[i] && outCount < maxLength; i++) {
+  for (int16_t i = 0; in[i] && outCount < maxLength; i++) {
     if (in[i] == delim) {
       if (delimCount + 1 == occurrenceNumber) {
         break;
@@ -1821,7 +1816,7 @@ void setupSimCom() {
   delay(5000);
   SimComSerial->begin(9600);
 
-  for (int i = 0; i < 3; i++) {
+  for (int8_t i = 0; i < 3; i++) {
     fona.beginSIM7000(*SimComSerial);
 
     if (fona.getNumSMSSIM7000() >= 0) {
@@ -1835,21 +1830,21 @@ void setupSimCom() {
   simComConnectionStatus = 1;
 }
 
-void waitUntilNetworkConnected(short secondsToWait) {
+void waitUntilNetworkConnected(int16_t secondsToWait) {
   // no point trying to conenct to network if we can't connect to SimCom
   if (simComConnectionStatus == 1) {
     return;
   }
 
   debugPrint(F("Network"));
-  short netConn;
+  int8_t netConn;
 
   fona.setNetworkSettings(APN, F(""), F(""));
 
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
-  for (int i = 0; i < secondsToWait; i++) {
+  for (int16_t i = 0; i < secondsToWait; i++) {
     netConn = fona.getNetworkStatusSIM7000();
 
     // netConn status meanings:
@@ -2206,27 +2201,6 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   }
 
   handleUnknownReq(smsSender);
-}
-
-char readBlocking() {
-  while (!Serial.available());
-  return Serial.read();
-}
-
-uint16_t readnumber() {
-  uint16_t x = 0;
-  char c;
-  while (! isdigit(c = readBlocking())) {
-    //Serial.print(c);
-  }
-  Serial.print(c);
-  x = c - '0';
-  while (isdigit(c = readBlocking())) {
-    Serial.print(c);
-    x *= 10;
-    x += c - '0';
-  }
-  return x;
 }
 
 #endif
