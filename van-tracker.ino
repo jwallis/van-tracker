@@ -135,8 +135,11 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 int8_t simComConnectionStatus = 2;
 int8_t totalFailedSendSMSAttempts = 0;
 
+// What was the result of the most recent GPS connection attempt? Must be TRUE to start off with...
+bool lastGPSConnAttemptWorked = true;
+int16_t lastGPSConnAttemptTime = -1;
+
 int16_t lastRestartTime = -1;
-int8_t lastGPSQueryMinute = -1;
 int8_t lastGeofenceWarningMinute = -1;
 
 volatile bool killSwitchOnVolatile = false;
@@ -373,26 +376,24 @@ void resetSystem() {
 }
 
 void watchDogForTurnOffGPS() {
-  // shut down GPS module after 10 minutes of inactivity
+  // shut down GPS module after 10 minutes of inactivity to save power
 
-  if (lastGPSQueryMinute == -1)
+
+  // if already off, return
+  if (fona.GPSstatusSIM7000() == 0) {
     return;
+  }
 
-  int8_t currentMinuteInt = getTimePartInt(MINUTE_INDEX);
-
-  // if it's been > 10 min, take action (turn off gps to save power)
+  int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // case 1 example: lastQuery = 5:10pm, current = 5:20pm
-  if (lastGPSQueryMinute <= currentMinuteInt && currentMinuteInt - lastGPSQueryMinute > 10) {
-      setGPS(false);
-      lastGPSQueryMinute = -1;
+  if (lastGPSConnAttemptTime <= currentTime && currentTime - lastGPSConnAttemptTime > 10) {
+    setGPS(false);
   }
-
-  // case 2 example: lastQuery = 5:55, current = 6:05pm
-  if (lastGPSQueryMinute > currentMinuteInt && lastGPSQueryMinute - currentMinuteInt < 50) {
-      setGPS(false);
-      lastGPSQueryMinute = -1;
-  }
+  // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:05am (which == 5)
+  if (lastGPSConnAttemptTime > currentTime && lastGPSConnAttemptTime - currentTime < 1430) {
+    setGPS(false);
+  }  
 }
 
 void watchDogForKillSwitch() {
@@ -505,7 +506,7 @@ void checkSMSInput() {
   int8_t numberOfSMSs;
 
   numberOfSMSs = fona.getNumSMSSIM7000();
-  debugPrint(F("Number SMSs: ")); debugPrintln(numberOfSMSs);
+  debugPrint(F("SMS: ")); debugPrintln(numberOfSMSs);
 
   if (numberOfSMSs > 0)
     handleSMSInput();
@@ -630,7 +631,7 @@ void handleSMSInput() {
 
     // exact match
     if (strcmp_P(smsValue, PSTR("commands")) == 0) {
-      if (handleCommandsMessagesReq(smsSender))
+      if (handleCommandsReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -700,6 +701,12 @@ bool handleLockReq(char* smsSender) {
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
   }
   else {
+
+    if (!getGPSLatLon(geofenceHomeLat, geofenceHomeLon)) {
+      strcpy_P(message, PSTR("Unable to get GPS signal"));
+      return sendSMS(smsSender, message);
+    }
+
     bool geofenceEnabled;
     char geofenceStart[3];
     char geofenceEnd[3];
@@ -731,7 +738,6 @@ bool handleLockReq(char* smsSender) {
     // and set fence Home to current location
     
     EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
-    getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     strcpy_P(geofenceRadius, PSTR("500"));
@@ -886,22 +892,22 @@ bool handleLocReq(char* smsSender) {
 bool handleUseSMSReq(char* smsSender, char* smsValue) {
   if (strcmp_P(smsValue, PSTR("usesmsplain")) == 0) {
     EEPROM.put(USEPLAINSMS_BOOL_1, true);
-    sendSMS(smsSender, F("Using plain SMS"));
+    sendSMS(smsSender, F("Plain SMS"));
   }
   if (strcmp_P(smsValue, PSTR("usesmsoverip")) == 0) {
     EEPROM.put(USEPLAINSMS_BOOL_1, false);
-    sendSMS(smsSender, F("Using SMS over IP"));
+    sendSMS(smsSender, F("SMS over IP"));
   }
 }
 
 bool handleFollowReq(char* smsSender, char* smsValue) {
   if (strstr_P(smsValue, PSTR("enable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
-    return sendSMS(smsSender, F("Follow: ENABLED"));
+    return sendSMS(smsSender, F("Follow: Enabled"));
   }
   if (strstr_P(smsValue, PSTR("disable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
-    return sendSMS(smsSender, F("Follow: DISABLED"));
+    return sendSMS(smsSender, F("Follow: Disabled"));
   }
   return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));  
 }
@@ -1069,7 +1075,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
       validMessage = true;
     } else {
-      strcpy_P(message, PSTR("Unable to get GPS location"));
+      strcpy_P(message, PSTR("Unable to get GPS signal"));
       return sendSMS(smsSender, message);
     }
   }
@@ -1078,12 +1084,6 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
   lastGeofenceWarningMinute = -1;
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
-    //    Yay only 2k of RAM, doing this all piecemeal (instead of big strings as is done in this comment) saves 54 bytes!!!!!!!
-    //    if (geofenceEnabled)
-    //      sprintf(message, "ENABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
-    //    else
-    //      sprintf(message, "DISABLED\nHours: %s-%s\nRadius: %s feet\nHome: google.com/search?q=%s,%s", geofenceStart, geofenceEnd, geofenceRadius, geofenceHomeLat, geofenceHomeLon);
-
     if (geofenceEnabled)
       strcat_P(message, PSTR("Fence: Enabled\\nHours: "));
     else
@@ -1173,7 +1173,7 @@ bool handleDevKeyReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, tempStr);
 }
 
-bool handleCommandsMessagesReq(char* smsSender) {
+bool handleCommandsReq(char* smsSender) {
   return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock\\nunlock"));
 }
 
@@ -1183,7 +1183,7 @@ bool handleUnknownReq(char* smsSender) {
 
   // if they're not the owner, don't send them the commands, just return true so their msg will be deleted
   if (strcmp(smsSender, ownerPhoneNumber) == 0)
-    return handleCommandsMessagesReq(smsSender);
+    return handleCommandsReq(smsSender);
   else
     return true;
 }
@@ -1201,13 +1201,34 @@ bool setGPS(bool tf) {
     return false;
   }
 
+  // if it isn't getting a GPS fix, do not try for the next 60 minutes (save power and be maximally responsive to commands)
+  if (!lastGPSConnAttemptWorked) {
+    
+    //////////////////////////////////////////////////////////////////////////////
+    // DO NOT make a generic method for this!
+    // Notice the > and < are NOT the same as in watchdogForTurnOffGPS()
+    //////////////////////////////////////////////////////////////////////////////
+    int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+
+    if (lastGPSConnAttemptTime <= currentTime && currentTime - lastGPSConnAttemptTime < 60) {
+      return false;
+    }
+    if (lastGPSConnAttemptTime > currentTime && lastGPSConnAttemptTime - currentTime > 1380) {
+      return false;
+    }
+  }
+
+  lastGPSConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+
   // -1 = error querying GPS
   //  0 = GPS off
   //  1 = no GPS fix
   //  2 = 2D fix
   //  3 = 3D fix
-  if (fona.GPSstatusSIM7000() >= 2)
+  if (fona.GPSstatusSIM7000() >= 2) {
+    lastGPSConnAttemptWorked = true;
     return true;
+  }
 
   // Keep trying to get a valid (non-error) response. Maybe we should turn off/on?
   for (int8_t i = 1; i < 30; i++) {
@@ -1220,6 +1241,8 @@ bool setGPS(bool tf) {
   // error, give up
   if (fona.GPSstatusSIM7000() < 0) {
     debugBlink(1,5);
+    lastGPSConnAttemptWorked = false;
+    fona.enableGPSSIM7000(false);
     return false;
   }
 
@@ -1241,6 +1264,7 @@ bool setGPS(bool tf) {
       sendRawCommand(F("AT+CGNSINF"));
       delay(3000);
       sendRawCommand(F("AT+CGNSINF"));
+      lastGPSConnAttemptWorked = true;
       return true;
     }
     delay(4000);
@@ -1248,6 +1272,8 @@ bool setGPS(bool tf) {
 
   // no fix, give up
   debugBlink(1,7);
+  lastGPSConnAttemptWorked = false;
+  fona.enableGPSSIM7000(false);
   return false;
 }
 
@@ -1263,7 +1289,6 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(0, gpsString, 120);
-      lastGPSQueryMinute = getTimePartInt(MINUTE_INDEX);
   
       getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
       getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
@@ -1530,8 +1555,7 @@ bool sendSMS(char* send_to, char* message) {
   int8_t successCode = fona.ConnectAndSendToHologram(serverName, serverPort, hologramSMSString, hologramSMSStringLength);
 
   debugPrint(F("  Code: "));
-  itoa(successCode, serverName, 10);
-  debugPrintln(serverName);
+  debugPrintln(successCode);
   fona.TCPshut();
 
   if (successCode == 0) {
