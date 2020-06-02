@@ -125,25 +125,27 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define TIMEZONE_CHAR_4                   142
 #define USEPLAINSMS_BOOL_1                146
 
+const char STR_HOME[] PROGMEM = " feet\\nHome: google.com/search?q=";
+const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
 
-// simComConnectionStatus status meanings
+// g_SimComConnectionStatus status meanings
 // 0 = connected to cell network
 // 1 = Failed to connect to SimCom chip
 // 2 = Not registered on cell network
 // 3 = Cell network registration denied
 // 4 = Unknown
-int8_t simComConnectionStatus = 2;
-int8_t totalFailedSendSMSAttempts = 0;
+int8_t g_SimComConnectionStatus = 2;
+int8_t g_totalFailedSendSMSAttempts = 0;
 
 // What was the result of the most recent GPS connection attempt? Must be TRUE to start off with...
-bool lastGPSConnAttemptWorked = true;
-int16_t lastGPSConnAttemptTime = -1;
+bool g_lastGPSConnAttemptWorked = true;
+int16_t g_lastGPSConnAttemptTime = -1;
 
-int16_t lastRestartTime = -1;
-int8_t lastGeofenceWarningMinute = -1;
+int16_t g_lastRestartTime = -1;
+int8_t g_lastGeofenceWarningMinute = -1;
 
-volatile bool killSwitchOnVolatile = false;
-volatile bool startAttemptedWhileKillSwitchOnVolatile = false;
+volatile bool g_volatileKillSwitchOn = false;
+volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 
 void setup() {
 
@@ -180,7 +182,7 @@ void loop() {
 #endif
 
   // 0 is good - we're connected to the cellular network
-  if (simComConnectionStatus == 0) {
+  if (g_SimComConnectionStatus == 0) {
     debugBlink(0,1);
     checkSMSInput();
 
@@ -191,7 +193,7 @@ void loop() {
     watchDogForReset();
   }
   // 1 is very bad - could not connect to SIM7000
-  if (simComConnectionStatus == 1) {
+  if (g_SimComConnectionStatus == 1) {
 
     // if kill switch is always on, turn on, otherwise this won't do anything
     watchDogForKillSwitch();
@@ -199,13 +201,13 @@ void loop() {
     // Delay 30 minutes and reset.  This loop takes about 7 seconds. 250 loops * 7 seconds = 30 minutes.
     for (int16_t i = 0; i < 250; i++) {
       delay(2000);
-      debugBlink(3,simComConnectionStatus);
+      debugBlink(3,g_SimComConnectionStatus);
     }
     resetSystem();
   }
   // > 1 is also bad - could not connect to cellular network
-  if (simComConnectionStatus > 1) {
-    debugBlink(3,simComConnectionStatus);
+  if (g_SimComConnectionStatus > 1) {
+    debugBlink(3,g_SimComConnectionStatus);
     delay(2000);
 
     debugBlink(0,2);
@@ -221,40 +223,40 @@ void watchDogForReset() {
   int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // Edge case: if simcom stops responding, we may get both times == 0.  
-  // Restart.  It will then either start working or go to simComConnectionStatus == 1
-  if (currentTime == 0 && lastRestartTime == 0) {
+  // Restart.  It will then either start working or go to g_SimComConnectionStatus == 1
+  if (currentTime == 0 && g_lastRestartTime == 0) {
     resetSystem();
     return;
   }
 
   // If this is VT-generated (geofence alert) those only get sent every 5 minutes
   // In the slim chance this is a response to an incoming command, we don't want to just keep retrying a million times
-  if (totalFailedSendSMSAttempts == 3) {
-    totalFailedSendSMSAttempts++;
+  if (g_totalFailedSendSMSAttempts == 3) {
+    g_totalFailedSendSMSAttempts++;
     resetSystem();
     return;
   }
-  if (totalFailedSendSMSAttempts == 6) {
-    totalFailedSendSMSAttempts = 0;
-    simComConnectionStatus = 2;
+  if (g_totalFailedSendSMSAttempts == 6) {
+    g_totalFailedSendSMSAttempts = 0;
+    g_SimComConnectionStatus = 2;
   }
 
   // 0 is connected
-  if (simComConnectionStatus == 0) {
+  if (g_SimComConnectionStatus == 0) {
     // if it's been 120 minutes, restart
-    if (lastRestartTime <= currentTime && currentTime - lastRestartTime > 120) {
+    if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 120) {
       resetSystem();
     }
-    if (lastRestartTime > currentTime && lastRestartTime - currentTime < 1320) {
+    if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1320) {
       resetSystem();
     }
   } // > 0 is not connected
   else {
     // if it's been 30 minutes, restart
-    if (lastRestartTime <= currentTime && currentTime - lastRestartTime > 30) {
+    if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 30) {
       resetSystem();
     }
-    if (lastRestartTime > currentTime && lastRestartTime - currentTime < 1410) {
+    if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1410) {
       resetSystem();
     }
   }
@@ -358,12 +360,12 @@ void updateClock() {
   
   if (!isClockValid()) {
     // set connection to "very bad"
-    simComConnectionStatus = 2;
+    g_SimComConnectionStatus = 2;
   }
 }
 
 void updateLastResetTime() {
-  lastRestartTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+  g_lastRestartTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 }
 
 void resetSystem() {
@@ -387,11 +389,11 @@ void watchDogForTurnOffGPS() {
   int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // case 1 example: lastQuery = 5:10pm, current = 5:20pm
-  if (lastGPSConnAttemptTime <= currentTime && currentTime - lastGPSConnAttemptTime > 10) {
+  if (g_lastGPSConnAttemptTime <= currentTime && currentTime - g_lastGPSConnAttemptTime > 10) {
     setGPS(false);
   }
   // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:05am (which == 5)
-  if (lastGPSConnAttemptTime > currentTime && lastGPSConnAttemptTime - currentTime < 1430) {
+  if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime < 1430) {
     setGPS(false);
   }  
 }
@@ -399,13 +401,13 @@ void watchDogForTurnOffGPS() {
 void watchDogForKillSwitch() {
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
-  if (startAttemptedWhileKillSwitchOnVolatile) {
+  if (g_volatileStartAttemptedWhileKillSwitchOn) {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
     sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch enabled"));
-    startAttemptedWhileKillSwitchOnVolatile = false;
+    g_volatileStartAttemptedWhileKillSwitchOn = false;
   }
 }
 
@@ -422,25 +424,25 @@ void watchDogForGeofence() {
   setGeofencePins(geofenceActive);
 
   if (!geofenceActive) {
-    lastGeofenceWarningMinute = -1;
+    g_lastGeofenceWarningMinute = -1;
     return;
   }
 
   int8_t currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
   // If the geofence was broken...
-  if (lastGeofenceWarningMinute != -1) {
+  if (g_lastGeofenceWarningMinute != -1) {
 
     // ...only send a warning SMS every 5 min.  User can use follow mode if she wants rapid updates.
 
     // There are 2 cases:
     // A) current minute > last query minute, example lastQuery = 10, current = 20
-    if (lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - lastGeofenceWarningMinute < 5) {
+    if (g_lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - g_lastGeofenceWarningMinute < 5) {
       return;
     }
   
     // B) current minute < last query minute, example lastQuery = 57, current = 05
-    if (lastGeofenceWarningMinute > currentMinuteInt && lastGeofenceWarningMinute - currentMinuteInt > 55) {
+    if (g_lastGeofenceWarningMinute > currentMinuteInt && g_lastGeofenceWarningMinute - currentMinuteInt > 55) {
       return;
     }
   }
@@ -496,11 +498,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
-  if (lastGeofenceWarningMinute == -1 && !follow) {
+  if (g_lastGeofenceWarningMinute == -1 && !follow) {
     sendSMS(ownerPhoneNumber, F("Use \"follow enable\" to receive rapid location updates (\"follow disable\" to stop)"));
   }
 
-  lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
+  g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
 }
 
 void checkSMSInput() {
@@ -673,7 +675,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     
     strcpy_P(message, PSTR("Lockdown Enabled. Try \"unlock\" before updating fence or kill\\nRadius: "));
     strcat(message, geofenceRadius);
-    strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
+    strcat_P(message, STR_HOME);
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
@@ -704,7 +706,7 @@ bool handleLockReq(char* smsSender) {
   else {
 
     if (!getGPSLatLon(geofenceHomeLat, geofenceHomeLon)) {
-      strcpy_P(message, PSTR("Unable to get GPS signal"));
+      strcpy_P(message, STR_UNABLE_GPS);
       return sendSMS(smsSender, message);
     }
 
@@ -756,7 +758,7 @@ bool handleLockReq(char* smsSender) {
   // send SMS with new geofence home
   strcpy_P(message, PSTR("Lockdown: Enabled\\nRadius: "));
   strcat(message, geofenceRadius);
-  strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
+  strcat_P(message, STR_HOME);
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -815,7 +817,7 @@ bool handleUnlockReq(char* smsSender) {
   // send SMS with original geofenceHome
   strcpy_P(message, PSTR("Lockdown: Disabled\\nRadius: "));
   strcat(message, geofenceRadius);
-  strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
+  strcat_P(message, STR_HOME);
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -886,7 +888,7 @@ bool handleLocReq(char* smsSender) {
     strcat(message, speed);
     strcat_P(message, PSTR("kph"));
   } else {
-    strcpy_P(message, PSTR("Unable to get GPS signal"));
+    strcpy_P(message, STR_UNABLE_GPS);
   }
   return sendSMS(smsSender, message);
 }
@@ -1077,13 +1079,13 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
       validMessage = true;
     } else {
-      strcpy_P(message, PSTR("Unable to get GPS signal"));
+      strcpy_P(message, STR_UNABLE_GPS);
       return sendSMS(smsSender, message);
     }
   }
 
   // reset this so the "follow" message will be sent when the fence is broken
-  lastGeofenceWarningMinute = -1;
+  g_lastGeofenceWarningMinute = -1;
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (geofenceEnabled)
@@ -1099,7 +1101,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
     }
     strcat_P(message, PSTR("\\nRadius: "));
     strcat(message, geofenceRadius);
-    strcat_P(message, PSTR(" feet\\nHome: google.com/search?q="));
+    strcat_P(message, STR_HOME);
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
@@ -1204,7 +1206,7 @@ bool setGPS(bool tf) {
   }
 
   // if it isn't getting a GPS fix, do not try for the next 60 minutes (save power and be maximally responsive to commands)
-  if (!lastGPSConnAttemptWorked) {
+  if (!g_lastGPSConnAttemptWorked) {
     
     //////////////////////////////////////////////////////////////////////////////
     // DO NOT make a generic method for this!
@@ -1212,15 +1214,15 @@ bool setGPS(bool tf) {
     //////////////////////////////////////////////////////////////////////////////
     int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
-    if (lastGPSConnAttemptTime <= currentTime && currentTime - lastGPSConnAttemptTime < 60) {
+    if (g_lastGPSConnAttemptTime <= currentTime && currentTime - g_lastGPSConnAttemptTime < 60) {
       return false;
     }
-    if (lastGPSConnAttemptTime > currentTime && lastGPSConnAttemptTime - currentTime > 1380) {
+    if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime > 1380) {
       return false;
     }
   }
 
-  lastGPSConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+  g_lastGPSConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // -1 = error querying GPS
   //  0 = GPS off
@@ -1228,7 +1230,7 @@ bool setGPS(bool tf) {
   //  2 = 2D fix
   //  3 = 3D fix
   if (fona.GPSstatusSIM7000() >= 2) {
-    lastGPSConnAttemptWorked = true;
+    g_lastGPSConnAttemptWorked = true;
     return true;
   }
 
@@ -1243,7 +1245,7 @@ bool setGPS(bool tf) {
   // error, give up
   if (fona.GPSstatusSIM7000() < 0) {
     debugBlink(1,5);
-    lastGPSConnAttemptWorked = false;
+    g_lastGPSConnAttemptWorked = false;
     fona.enableGPSSIM7000(false);
     return false;
   }
@@ -1266,7 +1268,7 @@ bool setGPS(bool tf) {
       sendRawCommand(F("AT+CGNSINF"));
       delay(3000);
       sendRawCommand(F("AT+CGNSINF"));
-      lastGPSConnAttemptWorked = true;
+      g_lastGPSConnAttemptWorked = true;
       return true;
     }
     delay(4000);
@@ -1274,7 +1276,7 @@ bool setGPS(bool tf) {
 
   // no fix, give up
   debugBlink(1,7);
-  lastGPSConnAttemptWorked = false;
+  g_lastGPSConnAttemptWorked = false;
   fona.enableGPSSIM7000(false);
   return false;
 }
@@ -1476,7 +1478,7 @@ bool isActive(int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd) {
 
 void checkForDeadMessages() {
   // skip if we're not connected to the SimCom
-  if (simComConnectionStatus == 1) {
+  if (g_SimComConnectionStatus == 1) {
     return;
   }
 
@@ -1521,7 +1523,7 @@ void replaceNewlines(char* message) {
 }
 
 bool sendSMS(char* send_to, char* message) {
-  if (simComConnectionStatus > 0)
+  if (g_SimComConnectionStatus > 0)
     return false;
 
   bool usePlainSMS = false;
@@ -1531,11 +1533,11 @@ bool sendSMS(char* send_to, char* message) {
     if (fona.sendSMS(send_to, message)) {
       debugBlink(1,6);
       updateLastResetTime();
-      totalFailedSendSMSAttempts = 0;   
+      g_totalFailedSendSMSAttempts = 0;   
       return true;
     } else {
       debugBlink(2,11);
-      totalFailedSendSMSAttempts++;
+      g_totalFailedSendSMSAttempts++;
       return false;
     }
   }
@@ -1585,13 +1587,13 @@ bool sendSMS(char* send_to, char* message) {
     debugPrintln(F("  Succ."));
     debugBlink(1,2);
     updateLastResetTime();
-    totalFailedSendSMSAttempts = 0;
+    g_totalFailedSendSMSAttempts = 0;
     return true;
   } else {
     debugPrintln(F("  Fail."));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(2,successCode);
-    totalFailedSendSMSAttempts++;
+    g_totalFailedSendSMSAttempts++;
     return false;
   }
 }
@@ -1843,12 +1845,12 @@ void starterISR() {
   _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
 
   // when starter is on, PIN is LOW
-  if (killSwitchOnVolatile && !digitalRead(STARTER_INTERRUPT_PIN))
-    startAttemptedWhileKillSwitchOnVolatile = true;
+  if (g_volatileKillSwitchOn && !digitalRead(STARTER_INTERRUPT_PIN))
+    g_volatileStartAttemptedWhileKillSwitchOn = true;
 }
 
 void setKillSwitchPins(bool tf) {
-  killSwitchOnVolatile = tf;
+  g_volatileKillSwitchOn = tf;
   digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
   digitalWrite(KILL_SWITCH_LED_PIN, tf);
 }
@@ -1867,18 +1869,18 @@ void setupSimCom() {
 
     if (fona.getNumSMSSIM7000() >= 0) {
       debugPrintln(F("\nSucc"));
-      simComConnectionStatus = 2;
+      g_SimComConnectionStatus = 2;
       debugBlink(0,4);
       return;
     }
     delay(10000);
   }
-  simComConnectionStatus = 1;
+  g_SimComConnectionStatus = 1;
 }
 
 void waitUntilNetworkConnected(int16_t secondsToWait) {
   // no point trying to conenct to network if we can't connect to SimCom
-  if (simComConnectionStatus == 1) {
+  if (g_SimComConnectionStatus == 1) {
     return;
   }
 
@@ -1901,7 +1903,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 4 Unknown
     // 5 Registered, roaming
 
-    // simComConnectionStatus status meanings
+    // g_SimComConnectionStatus status meanings
     // 0 = connected to cell network
     // 1 = Failed to connect to SimCom chip
     // 2 = Not registered on cell network
@@ -1909,7 +1911,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 4 = Unknown
     if (netConn == 1 || netConn == 5) {
       debugPrintln(F("\nSucc"));
-      simComConnectionStatus = 0;
+      g_SimComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
       fona.TCPshut();  // just in case GPRS is still on for some reason, save power
       return;
@@ -1917,11 +1919,11 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     delay(2000);
   }
 
-  // netConn == 0 is bad, so we translate it to 2 (not registered) before assigning its value to simComConnectionStatus
+  // netConn == 0 is bad, so we translate it to 2 (not registered) before assigning its value to g_SimComConnectionStatus
   if (netConn == 0)
     netConn = 2;
 
-  simComConnectionStatus = netConn;
+  g_SimComConnectionStatus = netConn;
   setSimComFuntionality(0);
 }
 
