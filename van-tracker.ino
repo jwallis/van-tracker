@@ -488,10 +488,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
-  strcat_P(message, PSTR("\\nSpeed: "));
-  strcat(message, currentSpeed);
   strcat_P(message, PSTR("\\nDir: "));
   strcat(message, currentDir);
+  strcat_P(message, PSTR(" @ "));
+  strcat(message, currentSpeed);
+  strcat_P(message, PSTR("kph"));
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
@@ -879,10 +880,11 @@ bool handleLocReq(char* smsSender) {
     strcat(message, latitude);
     strcat_P(message, PSTR(","));
     strcat(message, longitude);
-    strcat_P(message, PSTR("\\nSpeed: "));
-    strcat(message, speed);
     strcat_P(message, PSTR("\\nDir: "));
     strcat(message, dir);
+    strcat_P(message, PSTR(" @ "));
+    strcat(message, speed);
+    strcat_P(message, PSTR("kph"));
   } else {
     strcpy_P(message, PSTR("Unable to get GPS signal"));
   }
@@ -1277,6 +1279,26 @@ bool setGPS(bool tf) {
   return false;
 }
 
+void getDirFromDegrees(char* degrees) {
+  int16_t i = atoi(degrees);
+  if (i > 337 || i < 23)
+    strcpy_P(degrees, PSTR("N"));
+  else if (i < 67)
+    strcpy_P(degrees, PSTR("NE"));
+  else if (i < 112)
+    strcpy_P(degrees, PSTR("E"));
+  else if (i < 157)
+    strcpy_P(degrees, PSTR("SE"));
+  else if (i < 202)
+    strcpy_P(degrees, PSTR("S"));
+  else if (i < 247)
+    strcpy_P(degrees, PSTR("SW"));
+  else if (i < 292)
+    strcpy_P(degrees, PSTR("W"));
+  else // (i < 337)
+    strcpy_P(degrees, PSTR("NW"));
+}
+
 bool getGPSLatLon(char* latitude, char* longitude) {
   return getGPSLatLonSpeedDir(latitude, longitude, NULL, NULL);
 }
@@ -1295,6 +1317,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
       if (speed != NULL) {
         getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
         getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
+        getDirFromDegrees(dir);
       }
   
       // We have see errors where the lat,long come back as garbage like "9,43"
@@ -1837,7 +1860,6 @@ void setGeofencePins(bool tf) {
 void setupSimCom() {
   debugPrint(F("SimCom"));
   // let SimCom module start up before we try to connect
-  delay(5000);
   SimComSerial->begin(9600);
 
   for (int8_t i = 0; i < 3; i++) {
