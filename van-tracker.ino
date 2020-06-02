@@ -370,7 +370,7 @@ void updateLastResetTime() {
 
 void resetSystem() {
   debugBlink(0,3);
-  setSimComFuntionality(1);
+  setSimComFuntionality(true);
   setupSimCom();
   waitUntilNetworkConnected(120);
 
@@ -1675,13 +1675,13 @@ void writeCStringToEEPROM(int16_t eepromAddress, char* data) {
   EEPROM.put(eepromAddress+i, '\0');
 }
 
-void setSimComFuntionality(int8_t func) {
-  if (func == 0) {
+void setSimComFuntionality(bool onOff) {
+  if (onOff) {
+    sendRawCommand(F("AT+CFUN=1,1"));
+  } else {
     setGPS(false);
     sendRawCommand(F("AT+CFUN=0,0"));
   }
-  if (func == 1)
-    sendRawCommand(F("AT+CFUN=1,1"));
 }
 
 void insertZero(char *in) {
@@ -1924,7 +1924,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     netConn = 2;
 
   g_SimComConnectionStatus = netConn;
-  setSimComFuntionality(0);
+  setSimComFuntionality(false);
 }
 
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY
