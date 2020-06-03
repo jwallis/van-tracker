@@ -25,8 +25,6 @@ Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, ev
   6  = success sending plain SMS
   7  = failed  getting fix on GPS
   8  = success getting fix on GPS
-  9  = failed  turning off GPS
-  10 = success turning off GPS
 
 Error codes in failure to send SMS (2 longs followed by THIS MANY shorts) - see https://hologram.io/docs/reference/cloud/embedded/:
   1 = Connection was closed so we couldn’t read enough
@@ -68,12 +66,9 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-
 #include "Adafruit_FONA.h"
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
-#include <avr/wdt.h>
-#include "util/delay.h"
 
 #define STARTER_INTERRUPT_ID 0   // interrupt 0 == pin 2.  I hate that.
 #define STARTER_INTERRUPT_PIN 2  // interrupt 0 == pin 2.  I hate that.
@@ -216,7 +211,7 @@ void loop() {
     watchDogForReset();
   }
 
-  delay(500);
+  delay(1000);
 }
 
 void watchDogForReset() {
@@ -537,7 +532,6 @@ void handleSMSInput() {
     toLower(smsValue);
 
     debugPrintln(F("--read SMS--"));
-    debugPrintln(smsSender);
     debugPrintln(smsValue);
 
     // exact match
@@ -2098,7 +2092,7 @@ void putEEPROM() {
 void getEEPROM() {
   char tempc[24];
   bool tempb;
-  int tempi;
+  int16_t tempi;
 
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, tempc);
   Serial.write ("GEOFENCEHOMELAT_CHAR_12: ");
@@ -2143,6 +2137,14 @@ void getEEPROM() {
   Serial.write ("SERVERPORT_INT_2: ");
   itoa(tempi, tempc, 10);
   debugPrintln(tempc);
+
+  EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
+  Serial.write ("LOCKDOWNENABLED_BOOL_1: ");
+  debugPrintln(tempb);
+
+  EEPROM.get(TIMEZONE_CHAR_4, tempc);
+  Serial.write ("TIMEZONE_CHAR_4: ");
+  debugPrintln(tempc);
 }
 
 void checkSerialInput() {
@@ -2167,6 +2169,16 @@ void handleSerialInput(String command) {
   if (strcmp_P(temp, PSTR("p")) == 0) {
     putEEPROM();
   }
+  if (strcmp_P(temp, PSTR("e")) == 0) {
+    resetSystem();
+  }
+//  if (strcmp_P(temp, PSTR("m")) == 0) {
+//    char send_to[13]="+15127500974";
+//    char message[4]="abc";
+//    fona.sendSMS(send_to, message);
+//  }
+
+  
 
 // for SERIAL TUBE:
 
