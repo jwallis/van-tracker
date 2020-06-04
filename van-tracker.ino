@@ -54,7 +54,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #define APN               F("hologram")
-#define SERVER_NAME       "cloudsocket.hologram.io" // DO NOT USE F() MACRO HERE!  See https://hologram.io/docs/reference/cloud/embedded/#send-an-sms-via-the-hologram-cloud
+#define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
 #define VAN_PROD
