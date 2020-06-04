@@ -1306,7 +1306,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     // full string:
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPS(0, gpsString, 120);
+      fona.getGPSSIM7000(0, gpsString, 120);
   
       getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
       getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
@@ -1336,7 +1336,7 @@ bool getGPSTime(char* timeStr) {
     // full string:
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPS(0, gpsString, 120);
+      fona.getGPSSIM7000(0, gpsString, 120);
   
       getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
   
@@ -1524,7 +1524,7 @@ bool sendSMS(char* send_to, char* message) {
   EEPROM.get(USEPLAINSMS_BOOL_1, usePlainSMS);
   if (usePlainSMS) {
     replaceNewlines(message);
-    if (fona.sendSMS(send_to, message)) {
+    if (fona.sendSMSSIM7000(send_to, message)) {
       debugBlink(1,6);
       updateLastResetTime();
       g_totalFailedSendSMSAttempts = 0;   
@@ -1575,16 +1575,13 @@ bool sendSMS(char* send_to, char* message) {
 
   debugPrint(F("  Code: "));
   debugPrintln(successCode);
-  fona.TCPshut();
 
   if (successCode == 0) {
-    debugPrintln(F("  Succ."));
     debugBlink(1,2);
     updateLastResetTime();
     g_totalFailedSendSMSAttempts = 0;
     return true;
   } else {
-    debugPrintln(F("  Fail."));
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(2,successCode);
     g_totalFailedSendSMSAttempts++;
@@ -2080,14 +2077,11 @@ void debugPrintln(bool b) {
 
 #ifdef VAN_TEST
 
-
 void putEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "0.0");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "0.0");
-
 }
-
 
 void getEEPROM() {
   char tempc[24];
