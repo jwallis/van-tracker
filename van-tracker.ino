@@ -114,11 +114,9 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define KILLSWITCHEND_CHAR_SAVED_3        104
 
 #define DEVKEY_CHAR_9                     107
-#define SERVERNAME_CHAR_24                116
-#define SERVERPORT_INT_2                  140
 
-#define TIMEZONE_CHAR_4                   142
-#define USEPLAINSMS_BOOL_1                146
+#define TIMEZONE_CHAR_4                   116
+#define USEPLAINSMS_BOOL_1                120
 
 const char STR_HOME[] PROGMEM = " feet\\nHome: google.com/search?q=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
@@ -1142,33 +1140,19 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, message);
 }
 
-bool handleDevKeyReq(char* smsSender, char* smsValue) {
+void handleDevKeyReq(char* smsSender, char* smsValue) {
 
   // special: smsValue is still case-sensitive.
-  // To save memory, tempStr will be used for the toLower() version of smsValue as well as the message we send back
-  char tempStr[46] = "";
-  strcpy(tempStr, smsValue);
-  toLower(tempStr);
+  char devKey[9];
+  getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8); // max_length
+
+  toLower(smsValue);
   
-  char devKey[9] = "";
-
   // set devKey
-  if (strstr_P(tempStr, PSTR("devkey set"))) {
-    getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8); // max_length
+  if (strstr_P(smsValue, PSTR("devkey set"))) {
     EEPROM.put(DEVKEY_CHAR_9, devKey);
-
-    strcpy_P(tempStr, PSTR("Setting devKey to "));
-    strcat(tempStr, devKey);
+    sendSMS(smsSender, F("Ok"));
   }
-
-  // just respond with current devKey
-  else {
-    EEPROM.get(DEVKEY_CHAR_9, devKey);
-    strcpy(tempStr, devKey);
-    strcat_P(tempStr, PSTR("\\nTry \"devkey set ________\""));
-  }
-
-  return sendSMS(smsSender, tempStr);
 }
 
 bool handleCommandsReq(char* smsSender) {
@@ -1548,11 +1532,7 @@ bool sendSMS(char* send_to, char* message) {
   int16_t hologramSMSStringLength;
 
   char devKey[9] = "";
-  char serverName[24] = "";
-  int16_t serverPort;
   EEPROM.get(DEVKEY_CHAR_9, devKey);
-  EEPROM.get(SERVERNAME_CHAR_24, serverName);
-  EEPROM.get(SERVERPORT_INT_2, serverPort);
 
   // 00000000 is the default devKey (comes from initEEPROM)
   // we delete the incoming SMS so we don't try to send the msg indefinitely
@@ -1571,7 +1551,7 @@ bool sendSMS(char* send_to, char* message) {
   debugPrint(F("  SMS:"));
   debugPrintln(hologramSMSString);
 
-  int8_t successCode = fona.ConnectAndSendToHologram(serverName, serverPort, hologramSMSString, hologramSMSStringLength);
+  int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
 
   debugPrint(F("  Code: "));
   debugPrintln(successCode);
@@ -1978,8 +1958,6 @@ void initEEPROM() {
   EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, "00");
   
   EEPROM.put(DEVKEY_CHAR_9, "00000000");
-  EEPROM.put(SERVERNAME_CHAR_24, SERVER_NAME);
-  EEPROM.put(SERVERPORT_INT_2, SERVER_PORT);
   
   EEPROM.put(TIMEZONE_CHAR_4, "-20");
   EEPROM.put(USEPLAINSMS_BOOL_1, false);
@@ -2123,13 +2101,6 @@ void getEEPROM() {
   debugPrintln(tempc);
   EEPROM.get(DEVKEY_CHAR_9, tempc);
   Serial.write ("DEVKEY_CHAR_9: ");
-  debugPrintln(tempc);
-  EEPROM.get(SERVERNAME_CHAR_24, tempc);
-  Serial.write ("SERVERNAME_CHAR_24: ");
-  debugPrintln(tempc);
-  EEPROM.get(SERVERPORT_INT_2, tempi);
-  Serial.write ("SERVERPORT_INT_2: ");
-  itoa(tempi, tempc, 10);
   debugPrintln(tempc);
 
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
