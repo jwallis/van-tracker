@@ -1115,7 +1115,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[92] = "";
+  char message[104] = "";
   char ownerPhoneNumber[15] = "";
 
   // set owner number
@@ -1134,7 +1134,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcpy(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\nTry \"owner\" plus:\\nset (include number *with country code* or leave blank for YOUR number)"));
+    strcat_P(message, PSTR("\\nTry \"owner\" plus:\\nset (include number WITH country code or leave blank for YOUR number)"));
   }
 
   return sendSMS(smsSender, message);
@@ -2067,48 +2067,48 @@ void getEEPROM() {
   int16_t tempi;
 
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, tempc);
-  Serial.write ("GEOFENCEHOMELAT_CHAR_12: ");
+  debugPrint(F("GEOFENCEHOMELAT_CHAR_12: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, tempc);
-  Serial.write ("GEOFENCEHOMELON_CHAR_12: ");
+  debugPrint(F("GEOFENCEHOMELON_CHAR_12: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEENABLED_BOOL_1, tempb);
-  Serial.write ("GEOFENCEENABLED_BOOL_1: ");
+  debugPrint(F("GEOFENCEENABLED_BOOL_1: "));
   debugPrintln(tempb);
   EEPROM.get(GEOFENCESTART_CHAR_3, tempc);
-  Serial.write ("GEOFENCESTART_CHAR_3: ");
+  debugPrint(F("GEOFENCESTART_CHAR_3: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEEND_CHAR_3, tempc);
-  Serial.write ("GEOFENCEEND_CHAR_3: ");
+  debugPrint(F("GEOFENCEEND_CHAR_3: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCERADIUS_CHAR_7, tempc);
-  Serial.write ("GEOFENCERADIUS_CHAR_7: ");
+  debugPrint(F("GEOFENCERADIUS_CHAR_7: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, tempb);
-  Serial.write ("GEOFENCEFOLLOW_BOOL_1: ");
+  debugPrint(F("GEOFENCEFOLLOW_BOOL_1: "));
   debugPrintln(tempb);
   EEPROM.get(KILLSWITCHENABLED_BOOL_1, tempb);
-  Serial.write ("KILLSWITCHENABLED_BOOL_1: ");
+  debugPrint(F("KILLSWITCHENABLED_BOOL_1: "));
   debugPrintln(tempb);
   EEPROM.get(KILLSWITCHSTART_CHAR_3, tempc);
-  Serial.write ("KILLSWITCHSTART_CHAR_3: ");
+  debugPrint(F("KILLSWITCHSTART_CHAR_3: "));
   debugPrintln(tempc);
   EEPROM.get(KILLSWITCHEND_CHAR_3, tempc);
-  Serial.write ("KILLSWITCHEND_CHAR_3: ");
+  debugPrint(F("KILLSWITCHEND_CHAR_3: "));
   debugPrintln(tempc);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, tempc);
-  Serial.write ("OWNERPHONENUMBER_CHAR_15: ");
+  debugPrint(F("OWNERPHONENUMBER_CHAR_15: "));
   debugPrintln(tempc);
   EEPROM.get(DEVKEY_CHAR_9, tempc);
-  Serial.write ("DEVKEY_CHAR_9: ");
+  debugPrint(F("DEVKEY_CHAR_9: "));
   debugPrintln(tempc);
 
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
-  Serial.write ("LOCKDOWNENABLED_BOOL_1: ");
+  debugPrint(F("LOCKDOWNENABLED_BOOL_1: "));
   debugPrintln(tempb);
 
   EEPROM.get(TIMEZONE_CHAR_4, tempc);
-  Serial.write ("TIMEZONE_CHAR_4: ");
+  debugPrint(F("TIMEZONE_CHAR_4: "));
   debugPrintln(tempc);
 }
 
