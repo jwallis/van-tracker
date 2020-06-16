@@ -371,7 +371,7 @@ void resetSystem() {
 }
 
 void watchDogForTurnOffGPS() {
-  // shut down GPS module after 10 minutes of inactivity to save power
+  // shut down GPS module after 20 minutes of inactivity to save power
 
 
   // if already off, return
@@ -381,12 +381,12 @@ void watchDogForTurnOffGPS() {
 
   int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
-  // case 1 example: lastQuery = 5:10pm, current = 5:20pm
-  if (g_lastGPSConnAttemptTime <= currentTime && currentTime - g_lastGPSConnAttemptTime > 10) {
+  // case 1 example: lastQuery = 5:10pm, current = 5:35pm
+  if (g_lastGPSConnAttemptTime <= currentTime && currentTime - g_lastGPSConnAttemptTime > 20) {
     setGPS(false);
   }
-  // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:05am (which == 5)
-  if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime < 1430) {
+  // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:25am (which == 25)
+  if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime < 1420) {
     setGPS(false);
   }  
 }
@@ -426,16 +426,16 @@ void watchDogForGeofence() {
   // If the geofence was broken...
   if (g_lastGeofenceWarningMinute != -1) {
 
-    // ...only send a warning SMS every 5 min.  User can use follow mode if she wants rapid updates.
+    // ...only send a warning SMS every 15 min.  User can use follow mode if she wants rapid updates.
 
     // There are 2 cases:
-    // A) current minute > last query minute, example lastQuery = 10, current = 20
-    if (g_lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - g_lastGeofenceWarningMinute < 5) {
+    // A) current minute > last query minute, example lastQuery = 10, current = 30
+    if (g_lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - g_lastGeofenceWarningMinute < 15) {
       return;
     }
   
-    // B) current minute < last query minute, example lastQuery = 57, current = 05
-    if (g_lastGeofenceWarningMinute > currentMinuteInt && g_lastGeofenceWarningMinute - currentMinuteInt > 55) {
+    // B) current minute < last query minute, example lastQuery = 57, current = 15
+    if (g_lastGeofenceWarningMinute > currentMinuteInt && g_lastGeofenceWarningMinute - currentMinuteInt > 45) {
       return;
     }
   }
@@ -492,7 +492,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use \"follow enable\" to receive rapid location updates (\"follow disable\" to stop)"));
+    sendSMS(ownerPhoneNumber, F("Emergencies Only: Use \"follow enable\" to receive rapid location updates (\"follow disable\" to stop)"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -899,13 +899,17 @@ bool handleUseSMSReq(char* smsSender, char* smsValue) {
 bool handleFollowReq(char* smsSender, char* smsValue) {
   if (strstr_P(smsValue, PSTR("enable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
-    return sendSMS(smsSender, F("Follow: Enabled"));
+    return true;
+    // save a little memory/data
+    //return sendSMS(smsSender, F("Follow: Enabled"));
   }
   if (strstr_P(smsValue, PSTR("disable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
-    return sendSMS(smsSender, F("Follow: Disabled"));
+    return true;
+    // save a little memory/data
+    //return sendSMS(smsSender, F("Follow: Disabled"));
   }
-  return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));  
+  return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));
 }
 
 bool handleTimeReq(char* smsSender, char* smsValue) {
@@ -1232,10 +1236,6 @@ bool setGPS(bool tf) {
   fona.enableGPSSIM7000(true);
   delay(4000);
 
-  
-  char currentLat[12];
-  char currentLon[12];
-
   // wait up to 90s to get GPS fix
   for (int8_t j = 0; j < 23; j++) {
     if (fona.GPSstatusSIM7000() >= 2) {
@@ -1292,8 +1292,8 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     for (int8_t i = 0; i < 10; i++) {
       fona.getGPSSIM7000(0, gpsString, 120);
   
-      getOccurrenceInDelimitedString(gpsString, latitude, 4, ',');
-      getOccurrenceInDelimitedString(gpsString, longitude, 5, ',');
+      getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
+      getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
       if (speed != NULL) {
         getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
         getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
@@ -1764,7 +1764,8 @@ bool getOccurrenceInDelimitedString(char* in, char* out, int8_t occurrenceNumber
   int16_t outCount = 0;
   bool foundOccurrence = false;
 
-  cleanString(in, delim);
+  if (delim == ' ')
+    cleanString(in, delim);
 
   for (int16_t i = 0; in[i] && outCount < maxLength; i++) {
     if (in[i] == delim) {
