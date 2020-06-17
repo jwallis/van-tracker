@@ -137,6 +137,8 @@ int16_t g_lastGPSConnAttemptTime = -1;
 int16_t g_lastRestartTime = -1;
 int8_t g_lastGeofenceWarningMinute = -1;
 
+int8_t g_geofenceWarningCount = 0;
+bool g_geofenceWarningCountMessageSent = false;
 int8_t g_followMessageCount = 0;
 
 volatile bool g_volatileKillSwitchOn = false;
@@ -469,6 +471,20 @@ void watchDogForGeofence() {
     }
   }
 
+  // send at most 12 warning messages (1 message every 15 minutes for 3 hours)... and then stop
+  if (g_geofenceWarningCount > 11) {
+
+    // send a message about auto-disabling the geofence warning messages... but only send it once.
+    if (!g_geofenceWarningCountMessageSent) {
+      char ownerPhoneNumber[15];
+      EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+      sendSMS(ownerPhoneNumber, F("Warnings auto-disabled. Send any command to re-enable"));
+      g_geofenceWarningCountMessageSent = true;
+    }
+    return;
+  }
+  g_geofenceWarningCount++;
+
   char currentLat[12];
   char currentLon[12];
   char currentSpeed[4];
@@ -521,29 +537,28 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Emergencies Only: Use \"follow enable\" to receive location updates (\"follow disable\" to stop)"));
+    sendSMS(ownerPhoneNumber, F("Emergency Only: Use \"follow enable\" to receive location updates (\"follow disable\" to stop)"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
 }
 
 void checkSMSInput() {
-  int8_t numberOfSMSs;
-
-  numberOfSMSs = fona.getNumSMSSIM7000();
+  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
   debugPrint(F("SMS: ")); debugPrintln(numberOfSMSs);
 
-  if (numberOfSMSs > 0)
-    handleSMSInput();
-}
-
-void handleSMSInput() {
-  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
+  if (numberOfSMSs < 1)
+    return;
 
   char smsSender[15];
   char smsValue[51];
   uint16_t smsValueLength;
   int8_t smssFound = 0;
+
+  // Ugh globals :(
+  // If they send ANY message, reset the geofence warnings so they start sending again
+  g_geofenceWarningCount = 0;
+  g_geofenceWarningCountMessageSent = false;
 
   for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
     // SimCom module has 10 slots
