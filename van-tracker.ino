@@ -137,6 +137,8 @@ int16_t g_lastGPSConnAttemptTime = -1;
 int16_t g_lastRestartTime = -1;
 int8_t g_lastGeofenceWarningMinute = -1;
 
+int8_t g_followMessageCount = 0;
+
 volatile bool g_volatileKillSwitchOn = false;
 volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 
@@ -404,14 +406,41 @@ void watchDogForKillSwitch() {
   }
 }
 
-void watchDogForGeofence() {
+bool watchDogForFollow() {
   bool follow;
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
 
-  if (follow) {
-    sendGeofenceWarning();
-    return;
+  if (!follow)
+    return false;
+
+  sendGeofenceWarning();
+
+  g_followMessageCount++;
+  if (g_followMessageCount > 30) {
+    g_followMessageCount = 0;
+    EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
+
+    char ownerPhoneNumber[15];
+    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+    sendSMS(ownerPhoneNumber, F("Follow auto-disabled. Use \"follow enable\" to re-enable"));  
   }
+  else {
+    bool usePlainSMS = false;
+    EEPROM.get(USEPLAINSMS_BOOL_1, usePlainSMS);
+  
+    if (usePlainSMS)  // if we're using plain (expensive) SMSs, only send about once every 3 minutes
+      delay(150000);
+    else              // every 1.5 minutes or so
+      delay(60000);
+  }
+
+  return true;
+}
+
+void watchDogForGeofence() {
+
+  if (watchDogForFollow())
+    return;
 
   bool geofenceActive = isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3);
   setGeofencePins(geofenceActive);
@@ -423,10 +452,10 @@ void watchDogForGeofence() {
 
   int8_t currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
-  // If the geofence was broken...
+  // If we've sent a geofence warning...
   if (g_lastGeofenceWarningMinute != -1) {
 
-    // ...only send a warning SMS every 15 min.  User can use follow mode if she wants rapid updates.
+    // ...only the next one after 15 minutes have passed.  User can use follow mode if she wants rapid updates.
 
     // There are 2 cases:
     // A) current minute > last query minute, example lastQuery = 10, current = 30
@@ -492,7 +521,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Emergencies Only: Use \"follow enable\" to receive rapid location updates (\"follow disable\" to stop)"));
+    sendSMS(ownerPhoneNumber, F("Emergencies Only: Use \"follow enable\" to receive location updates (\"follow disable\" to stop)"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -899,6 +928,7 @@ bool handleUseSMSReq(char* smsSender, char* smsValue) {
 bool handleFollowReq(char* smsSender, char* smsValue) {
   if (strstr_P(smsValue, PSTR("enable"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
+    g_followMessageCount = 0;
     return true;
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Enabled"));
@@ -1160,7 +1190,7 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock\\nunlock"));
+  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock\\nunlock\\nboth\\ntime"));
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1305,11 +1335,13 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
       if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
         return true;
       }
+      delay(3000);
     }
   }
 
   latitude[0] = '\0';
   longitude[0] = '\0';
+  g_lastGPSConnAttemptWorked = false;
   return false;
 }
 
