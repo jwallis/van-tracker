@@ -483,7 +483,6 @@ void watchDogForGeofence() {
     }
     return;
   }
-  g_geofenceWarningCount++;
 
   char currentLat[12];
   char currentLon[12];
@@ -492,6 +491,7 @@ void watchDogForGeofence() {
 
   if (getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir) && outsideGeofence(currentLat, currentLon)) {
     sendGeofenceWarning(false, currentLat, currentLon, currentSpeed, currentDir);
+    g_geofenceWarningCount++;
   }
 }
 
@@ -731,10 +731,13 @@ bool handleLockReq(char* smsSender) {
   char geofenceRadius[7];
   bool lockdownEnabled;
 
+  strcpy_P(message, PSTR("Lockdown"));
+  
   // check if lockdown is ALREADY ENabled
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
 
   if (lockdownEnabled) {
+    strcat_P(message, PSTR(" already"));
     EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
@@ -775,8 +778,9 @@ bool handleLockReq(char* smsSender) {
   
     // set primary variables (except Follow) to enabled, always on, etc. and use radius = 500
     // and set fence Home to current location
-    
+
     EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
+    getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     strcpy_P(geofenceRadius, PSTR("500"));
@@ -792,7 +796,7 @@ bool handleLockReq(char* smsSender) {
   }
 
   // send SMS with new geofence home
-  strcpy_P(message, PSTR("Lockdown: Enabled\\nRadius: "));
+  strcat_P(message, PSTR(" Enabled\\nRadius: "));
   strcat(message, geofenceRadius);
   strcat_P(message, STR_HOME);
   strcat(message, geofenceHomeLat);
@@ -1205,7 +1209,7 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock\\nunlock\\nboth\\ntime"));
+  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock/unlock\\nboth\\ntime"));
 }
 
 bool handleUnknownReq(char* smsSender) {
