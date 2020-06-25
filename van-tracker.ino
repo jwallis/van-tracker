@@ -199,6 +199,10 @@ void loop() {
     for (int16_t i = 0; i < 250; i++) {
       delay(2000);
       debugBlink(3,g_SimComConnectionStatus);
+      #ifdef VAN_TEST
+        checkSerialInput();
+        flushSimCom();
+      #endif
     }
     resetSystem();
   }
@@ -263,7 +267,8 @@ bool isClockValid() {
   // When the SIM7000 is powered on, the Real Time Clock says 1980-01-01.
   // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
   // So, this function returns true iff the year < 80.
-  return (getTimePartInt(YEAR_INDEX) < 80);
+  int8_t yearIndex = getTimePartInt(YEAR_INDEX);
+  return (yearIndex < 80 && yearIndex > 19);
 }
 
 void updateClock() {
@@ -306,7 +311,7 @@ void updateClock() {
   if (getGPSTime(gpsTimeStr)) {
 
     char simComTimeStr[23] = "\"";
-    simComTimeStr[1]  = gpsTimeStr[2];
+    simComTimeStr[1] = gpsTimeStr[2];
     simComTimeStr[2] = gpsTimeStr[3];
     simComTimeStr[3] = '/';
     simComTimeStr[4] = gpsTimeStr[4];
@@ -354,9 +359,10 @@ void updateClock() {
     fona.setTime(simComTimeStr);
   }
 
-  
-  if (!isClockValid()) {
-    // set connection to "very bad"
+  // Very edgy case - SimCom won't respond to AT+CPMS? to get SMS messages, but GPS stuff WILL work.
+  // Don't worry, we'll reset SimCom in about 30 min
+  if (g_SimComConnectionStatus == 1 && isClockValid()) {
+    // set connection to "bad"
     g_SimComConnectionStatus = 2;
   }
 }
@@ -370,6 +376,7 @@ void resetSystem() {
   setSimComFuntionality(true);
   setupSimCom();
   waitUntilNetworkConnected(120);
+  updateClock();
 
   updateLastResetTime();  
 }
@@ -549,6 +556,9 @@ void checkSMSInput() {
 
   if (numberOfSMSs < 1)
     return;
+
+  // We set g_lastGPSConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
+  g_lastGPSConnAttemptWorked = true;
 
   char smsSender[15];
   char smsValue[51];
@@ -731,7 +741,7 @@ bool handleLockReq(char* smsSender) {
   char geofenceRadius[7];
   bool lockdownEnabled;
 
-  strcpy_P(message, PSTR("Lockdown"));
+  strcpy_P(message, PSTR("Lockdown:"));
   
   // check if lockdown is ALREADY ENabled
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
@@ -1358,9 +1368,13 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     }
   }
 
+  // I've seen where setGPS(true) above worked, but then then fona.getGPSSIM7000() failed a few times in a row, but each
+  // time I saw this, fona.getGPSSIM7000() began working consistently afterwards, so do NOT do either of the following:
+  //      g_lastGPSConnAttemptWorked = false;
+  //      setGPS(false);
+
   latitude[0] = '\0';
   longitude[0] = '\0';
-  g_lastGPSConnAttemptWorked = false;
   return false;
 }
 
@@ -1375,9 +1389,10 @@ bool getGPSTime(char* timeStr) {
   
       getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
   
-      if (strlen(gpsString) > 40 && strstr_P(timeStr, PSTR("1,1,20"))) {
+      if (strlen(gpsString) > 40 && strstr_P(gpsString, PSTR("1,1,20"))) {
         return true;
       }
+      delay(2000);
     }
   }
 
