@@ -144,6 +144,12 @@ int8_t g_followMessageCount = 0;
 volatile bool g_volatileKillSwitchOn = false;
 volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 
+//int freeRam () {
+//  extern int __heap_start, *__brkval;
+//  int v;
+//  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
+//}
+
 void setup() {
 
   pinSetup();
@@ -165,7 +171,7 @@ void setup() {
 #endif
 
   setupSimCom();
-  waitUntilNetworkConnected(600);
+  waitUntilNetworkConnected(300);
   checkForDeadMessages();
 
   updateClock();
@@ -560,15 +566,15 @@ void checkSMSInput() {
   // We set g_lastGPSConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
   g_lastGPSConnAttemptWorked = true;
 
+  // Ugh more globals :(
+  // If they send ANY message, reset the geofence warnings so they start sending again
+  g_geofenceWarningCount = 0;
+  g_geofenceWarningCountMessageSent = false;
+
   char smsSender[15];
   char smsValue[51];
   uint16_t smsValueLength;
   int8_t smssFound = 0;
-
-  // Ugh globals :(
-  // If they send ANY message, reset the geofence warnings so they start sending again
-  g_geofenceWarningCount = 0;
-  g_geofenceWarningCountMessageSent = false;
 
   for (int8_t smsSlotNumber = 0; smssFound < numberOfSMSs; smsSlotNumber++) {
     // SimCom module has 10 slots
@@ -1246,7 +1252,8 @@ bool setGPS(bool tf) {
     return false;
   }
 
-  // if it isn't getting a GPS fix, do not try for the next 60 minutes (save power and be maximally responsive to commands)
+  // If it isn't getting a GPS fix, do not try for the next 60 minutes (this is to save power).
+  // FYI: We set g_lastGPSConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
   if (!g_lastGPSConnAttemptWorked) {
     
     //////////////////////////////////////////////////////////////////////////////
@@ -1377,6 +1384,47 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
   longitude[0] = '\0';
   return false;
 }
+
+//bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
+//  char gpsString[120];
+//
+//  // full GPS string:
+//  // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+//  fona.getGPSSIM7000(0, gpsString, 120);
+//  getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
+//
+//  // if GPS is already working OR we turn it on successfully
+//  if (strlen(latitude) > 7 || setGPS(true)){
+//
+//    // We have seen errors where the lat,long come back as garbage like "9,43" so we may have to try a few times...
+//    for (int8_t i = 0; i < 10; i++) {
+//      getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
+//      getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
+//      if (speed != NULL) {
+//        getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
+//        getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
+//        getDirFromDegrees(dir);
+//      }
+//  
+//      // Leave the != NULL in there in case the '.' is at the 0th position, which I think is valid
+//      if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
+//        g_lastGPSConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+//        g_lastGPSConnAttemptWorked = true;
+//        return true;
+//      }
+//      else
+//        fona.getGPSSIM7000(0, gpsString, 120);
+//    }
+//  }
+//
+//  // I've seen where setGPS(true) above worked, but then then fona.getGPSSIM7000() failed a few times in a row, but each
+//  // time I saw this, fona.getGPSSIM7000() began working consistently afterwards, so do NOT do either of the following:
+//  //      g_lastGPSConnAttemptWorked = false;
+//  //      setGPS(false);
+//  latitude[0] = '\0';
+//  longitude[0] = '\0';
+//  return false;
+//}
 
 bool getGPSTime(char* timeStr) {
   char gpsString[120];
@@ -1957,7 +2005,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     delay(2000);
   }
 
-  // netConn == 0 is bad, so we translate it to 2 (not registered) before assigning its value to g_SimComConnectionStatus
+  // netConn == 0 means not registered, so we translate it to 2 (also means not registered) before assigning its value to g_SimComConnectionStatus
   if (netConn == 0)
     netConn = 2;
 
@@ -2084,34 +2132,14 @@ void debugPrintln(const __FlashStringHelper* str) {
   Serial.println(str);
 #endif
 }
-void debugPrintln(float f, int i) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
-  Serial.println(f, i);
-#endif
-}
 void debugPrintln(String s) {
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
-void debugPrintln(uint16_t s) {
+void debugPrintln(uint8_t s) {
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
-#endif
-}
-void debugPrintln(int8_t i) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
-  Serial.println(i);
-#endif
-}
-void debugPrintln(short s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
-  Serial.println(s);
-#endif
-}
-void debugPrintln(bool b) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
-  Serial.println(b);
 #endif
 }
 
@@ -2134,48 +2162,48 @@ void getEEPROM() {
   int16_t tempi;
 
   EEPROM.get(GEOFENCEHOMELAT_CHAR_12, tempc);
-  debugPrint(F("GEOFENCEHOMELAT_CHAR_12: "));
+  debugPrint(F("HOME_LAT: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, tempc);
-  debugPrint(F("GEOFENCEHOMELON_CHAR_12: "));
+  debugPrint(F("HOME_LON: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEENABLED_BOOL_1, tempb);
-  debugPrint(F("GEOFENCEENABLED_BOOL_1: "));
+  debugPrint(F("FENCE_ON: "));
   debugPrintln(tempb);
   EEPROM.get(GEOFENCESTART_CHAR_3, tempc);
-  debugPrint(F("GEOFENCESTART_CHAR_3: "));
+  debugPrint(F("FENCE_START: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEEND_CHAR_3, tempc);
-  debugPrint(F("GEOFENCEEND_CHAR_3: "));
+  debugPrint(F("FENCE_END: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCERADIUS_CHAR_7, tempc);
-  debugPrint(F("GEOFENCERADIUS_CHAR_7: "));
+  debugPrint(F("RADIUS: "));
   debugPrintln(tempc);
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, tempb);
-  debugPrint(F("GEOFENCEFOLLOW_BOOL_1: "));
+  debugPrint(F("FOLLOW: "));
   debugPrintln(tempb);
   EEPROM.get(KILLSWITCHENABLED_BOOL_1, tempb);
-  debugPrint(F("KILLSWITCHENABLED_BOOL_1: "));
+  debugPrint(F("KILL_ON: "));
   debugPrintln(tempb);
   EEPROM.get(KILLSWITCHSTART_CHAR_3, tempc);
-  debugPrint(F("KILLSWITCHSTART_CHAR_3: "));
+  debugPrint(F("KILL_START: "));
   debugPrintln(tempc);
   EEPROM.get(KILLSWITCHEND_CHAR_3, tempc);
-  debugPrint(F("KILLSWITCHEND_CHAR_3: "));
+  debugPrint(F("KILL_END: "));
   debugPrintln(tempc);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, tempc);
-  debugPrint(F("OWNERPHONENUMBER_CHAR_15: "));
+  debugPrint(F("OWNER: "));
   debugPrintln(tempc);
   EEPROM.get(DEVKEY_CHAR_9, tempc);
-  debugPrint(F("DEVKEY_CHAR_9: "));
+  debugPrint(F("DEVKEY: "));
   debugPrintln(tempc);
 
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
-  debugPrint(F("LOCKDOWNENABLED_BOOL_1: "));
+  debugPrint(F("LOCK_ON: "));
   debugPrintln(tempb);
 
   EEPROM.get(TIMEZONE_CHAR_4, tempc);
-  debugPrint(F("TIMEZONE_CHAR_4: "));
+  debugPrint(F("TIMEZONE: "));
   debugPrintln(tempc);
 }
 
