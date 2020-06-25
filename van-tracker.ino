@@ -589,7 +589,7 @@ void checkSMSInput() {
     fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
     toLower(smsValue);
 
-    debugPrintln(F("--read SMS--"));
+    debugPrintln(F("SMS:"));
     debugPrintln(smsValue);
 
     // exact match
@@ -1662,12 +1662,12 @@ bool sendSMS(char* send_to, char* message) {
   strcat(hologramSMSString, message);
   hologramSMSStringLength = strlen(hologramSMSString);
   
-  debugPrint(F("  SMS:"));
+  debugPrint(F("SMS: "));
   debugPrintln(hologramSMSString);
 
   int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
 
-  debugPrint(F("  Code: "));
+  debugPrint(F("Code: "));
   debugPrintln(successCode);
 
   if (successCode == 0) {
@@ -2287,7 +2287,7 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
   toLower(smsValue);
 
-  debugPrintln(F("-read SMS-"));
+  debugPrintln(F("SMS:"));
   debugPrintln(smsValue);
 
   if (strstr_P(smsValue, PSTR("gps")) || strstr_P(smsValue, PSTR("loc"))) {
