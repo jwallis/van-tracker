@@ -416,7 +416,7 @@ void watchDogForKillSwitch() {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
-    sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch enabled"));
+    sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch active"));
     g_volatileStartAttemptedWhileKillSwitchOn = false;
   }
 }
