@@ -239,6 +239,7 @@ void watchDogForReset() {
   // If this is VT-generated (geofence alert) those only get sent every 5 minutes
   // In the slim chance this is a response to an incoming command, we don't want to just keep retrying a million times
   if (g_totalFailedSendSMSAttempts == 3) {
+    // gotta increment to the next number or we'll reset every loop...
     g_totalFailedSendSMSAttempts++;
     resetSystem();
     return;
@@ -887,7 +888,7 @@ bool handleStatusReq(char* smsSender) {
   char currentTimeStr[23];
   char message[141];
 
-  char ownerPhoneNumber[15] = "";
+  char ownerPhoneNumber[15];
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
   bool fence;
   EEPROM.get(GEOFENCEENABLED_BOOL_1, fence);
@@ -1066,7 +1067,7 @@ bool handleBothReq(char* smsSender, char* smsValue) {
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[65] = "";
+  char message[65] = {0};
 
   bool validMessage = false;
   bool killSwitchEnabled;
@@ -1079,9 +1080,9 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (killSwitchEnabled)
-      strcat_P(message, PSTR("Kill: Enabled\\nHours: "));
+      strcpy_P(message, PSTR("Kill: Enabled\\nHours: "));
     else
-      strcat_P(message, PSTR("Kill: Disabled\\nHours: "));
+      strcpy_P(message, PSTR("Kill: Disabled\\nHours: "));
 
     strcat(message, killSwitchStart);
     strcat_P(message, PSTR("-"));
@@ -1110,7 +1111,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 }
 
 bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[135] = "";
+  char message[135] = {0};
 
   bool validMessage = false;
   bool geofenceEnabled;
@@ -1184,8 +1185,8 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[104] = "";
-  char ownerPhoneNumber[15] = "";
+  char message[104] = {0};
+  char ownerPhoneNumber[15] = {0};
 
   // set owner number
   if (strstr_P(smsValue, PSTR("owner set"))) {
@@ -1382,6 +1383,10 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
 
   latitude[0] = '\0';
   longitude[0] = '\0';
+  if (speed != NULL) {
+    speed[0] = '\0';
+    dir[0] = '\0';
+  }
   return false;
 }
 
@@ -1645,7 +1650,7 @@ bool sendSMS(char* send_to, char* message) {
   char hologramSMSString[165];
   int16_t hologramSMSStringLength;
 
-  char devKey[9] = "";
+  char devKey[9] = {0};
   EEPROM.get(DEVKEY_CHAR_9, devKey);
 
   // 00000000 is the default devKey (comes from initEEPROM)
@@ -2287,10 +2292,9 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
   toLower(smsValue);
 
-  debugPrintln(F("SMS:"));
   debugPrintln(smsValue);
 
-  if (strstr_P(smsValue, PSTR("gps")) || strstr_P(smsValue, PSTR("loc"))) {
+  if (strstr_P(smsValue, PSTR("loc"))) {
     handleLocReq(smsSender);
     return;
   }
