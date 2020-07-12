@@ -546,7 +546,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Emergency Only: Use \"follow enable\" to receive location updates (\"follow disable\" to stop)"));
+    sendSMS(ownerPhoneNumber, F("Emergency Only:\\nUse \"follow enable\" to receive location updates, \"follow disable\" to stop"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -749,7 +749,7 @@ bool handleLockReq(char* smsSender) {
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
 
   if (lockdownEnabled) {
-    strcat_P(message, PSTR(" already"));
+    strcat_P(message, PSTR(" Already"));
     EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
@@ -898,7 +898,7 @@ bool handleStatusReq(char* smsSender) {
   getTime(currentTimeStr);
 
   strcpy_P(message, PSTR("Owner: "));
-  strcat(message, ownerPhoneNumber);
+  strcat(message, &ownerPhoneNumber[1]);
 
   if (fence)
     strcat_P(message, PSTR("\\nFence: Enabled"));
@@ -1183,23 +1183,28 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   char message[104] = {0};
   char ownerPhoneNumber[15] = {0};
 
+  strcpy_P(message, PSTR("Owner: "));
+
   // set owner number
   if (strstr_P(smsValue, PSTR("owner set"))) {
-    if (getNumberFromString(smsValue, ownerPhoneNumber, 15))  // If number is found in the SMS,
-      addPlusToPhoneNumber(ownerPhoneNumber);                 // add a '+' to the beginning...
+    // If number is found in the SMS,
+    if (getNumberFromString(smsValue, ownerPhoneNumber, 15))
+      addPlusToPhoneNumber(ownerPhoneNumber);
     else
       strcpy(ownerPhoneNumber, smsSender);
+  }
 
-    strcpy_P(message, PSTR("Setting owner phone # to "));
-    strcat(message, &ownerPhoneNumber[1]);
+  // "+15554443333"
+  if (strlen(ownerPhoneNumber) > 11) {
     EEPROM.put(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+    strcat(message, &ownerPhoneNumber[1]);
   }
 
   // just respond with current owner number
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    strcpy(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\nTry \"owner\" plus:\\nset (include number WITH country code or leave blank for YOUR number)"));
+    strcat(message, &ownerPhoneNumber[1]);
+    strcat_P(message, PSTR("\\nTry \"owner set\" plus:\\nphone number WITH country code or leave blank for your number"));
   }
 
   return sendSMS(smsSender, message);
@@ -1221,7 +1226,7 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\nfence\\nfollow\\nstatus\\nkill\\nloc\\nowner\\nlock/unlock\\nboth\\ntime"));
+  return sendSMS(smsSender, F("Commands:\\nstatus\\nfence\\nkill\\nboth\\nlock/unlock\\nloc\\nfollow\\nowner\\ntime"));
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1496,7 +1501,7 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
 
 void getTime(char* currentTimeStr) {
 
-  // sets currentTime to "20/01/31,17:03:55-20" INCLUDING quotes  
+  // sets currentTime to "20/01/31,17:03:55-20" INCLUDING quotes 
   for (int8_t i = 0; i < 3; i++) {
     fona.getTime(currentTimeStr, 23);
 
