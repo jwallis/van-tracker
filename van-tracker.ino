@@ -422,14 +422,20 @@ void watchDogForKillSwitch() {
   }
 }
 
-bool watchDogForFollow() {
+bool watchDogForFollow(char* currentLat, char* currentLon, char* currentSpeed, char* currentDir) {
   bool follow;
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
 
   if (!follow)
     return false;
 
-  sendGeofenceWarning();
+  // yeah, let's keep trying!
+  g_lastGPSConnAttemptWorked = true;
+
+  // do not do "if (getGPS...) then sendGeofence...)
+  // if we can't get GPS, follow will send 0,0 so at least the user knows we're trying
+  getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir);
+  sendGeofenceWarning(true, currentLat, currentLon, currentSpeed, currentDir);
 
   g_followMessageCount++;
   if (g_followMessageCount > 30) {
@@ -454,8 +460,12 @@ bool watchDogForFollow() {
 }
 
 void watchDogForGeofence() {
+  char currentLat[12];
+  char currentLon[12];
+  char currentSpeed[4];
+  char currentDir[4];
 
-  if (watchDogForFollow())
+  if (watchDogForFollow(currentLat, currentLon, currentSpeed, currentDir))
     return;
 
   bool geofenceActive = isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3);
@@ -498,25 +508,10 @@ void watchDogForGeofence() {
     return;
   }
 
-  char currentLat[12];
-  char currentLon[12];
-  char currentSpeed[4];
-  char currentDir[4];
-
   if (getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir) && outsideGeofence(currentLat, currentLon)) {
     sendGeofenceWarning(false, currentLat, currentLon, currentSpeed, currentDir);
     g_geofenceWarningCount++;
   }
-}
-
-void sendGeofenceWarning() {
-  char currentLat[12];
-  char currentLon[12];
-  char currentSpeed[4];
-  char currentDir[4];
-
-  getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir);
-  sendGeofenceWarning(true, currentLat, currentLon, currentSpeed, currentDir);
 }
 
 void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* currentSpeed, char* currentDir) {
