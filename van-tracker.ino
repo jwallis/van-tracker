@@ -977,25 +977,32 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
   char localHourStr[4];
   int8_t localHourInt = -1;
 
+  char message[107] = {0};
+  strcpy_P(message, PSTR("System Time: "));
+
   if (strstr_P(smsValue, PSTR("time set "))) {
     getOccurrenceInDelimitedString(smsValue, localHourStr, 3, ' ', 3);
     localHourInt = atoi(localHourStr);
 
-    // check for invalid atoi()
+    // If atoi can't find a translation (it returns 0) AND the first character isn't '0' then something's wrong
     if (localHourInt == 0 && localHourStr[0] != '0')
       localHourInt = -1;
   }
 
-  if (localHourInt >= 0 and localHourInt < 24) {
-    char ntpTimeStr[22];
+  // We normally don't do this, but we're re-using tempTimeStr here
+  // In the call to enableNTPTimeSync(), it gets formatted as an NTP time string:    "2020/05/26,21:26:21"  INCLUDING quotes
+  // In our response to the user down below, it's formatted as a SimCom time string: "20/01/31,17:03:55-20" INCLUDING quotes
+  char tempTimeStr[23];
+
+  if (localHourInt >= 0 && localHourInt < 24) {
     char tzOffsetStr[4] = "00";
     int8_t tzOffsetInt;
 
-    // get current UTC time into ntpTimeStr
-    fona.enableNTPTimeSync(true, tzOffsetStr, ntpTimeStr, 22);
+    // get current UTC time into tempTimeStr
+    fona.enableNTPTimeSync(true, tzOffsetStr, tempTimeStr, 22);
 
     // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
-    int8_t utcHourInt = getTimePartInt(12, ntpTimeStr);
+    int8_t utcHourInt = getTimePartInt(12, tempTimeStr);
   
     // set the offset to the difference of what the user sent in and the current utc hour... with some caveats
     if (localHourInt - utcHourInt > 12)
@@ -1039,21 +1046,22 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
 
     EEPROM.put(TIMEZONE_CHAR_4, tzOffsetStr);
   
-    // set the clock to the right time using the offset.  Don't worry, ntpTimeStr is not being used to sync time, it's just being overwritten here
-    if (fona.enableNTPTimeSync(true, tzOffsetStr, ntpTimeStr, 22))
+    // set the clock to the right time using the offset.  Don't worry, tempTimeStr is not being used to sync time, it's just being overwritten here
+    if (fona.enableNTPTimeSync(true, tzOffsetStr, tempTimeStr, 22))
       updateLastResetTime();
 
-    // code reuse :)
-    handleStatusReq(smsSender);
-  } else {
-    char currentTimeStr[23];
-    getTime(currentTimeStr);
-    char message[105] = "Network Time: ";
-
-    strcat(message, currentTimeStr);
-    strcat_P(message, PSTR("\\nTry \"time set\" plus: (current hour of the day 0-23)"));
-    sendSMS(smsSender, message);
+    getTime(tempTimeStr);
+    strcat(message, tempTimeStr);
   }
+  // just get current time and add "Try..."
+  else {
+    getTime(tempTimeStr);
+    strcat(message, tempTimeStr);
+    strcat_P(message, PSTR("\\nTry \"time set\" plus:\\n(current hour of the day 0-23)"));
+  }
+
+  sendSMS(smsSender, message);
+  // always return true
   return true;
 }
 
@@ -1721,8 +1729,18 @@ bool setHoursFromSMS(char* smsValue, char* hoursStart, char* hoursEnd) {
   getOccurrenceInDelimitedString(smsValue, hoursStart, 3, ' ', 2);
   getOccurrenceInDelimitedString(smsValue, hoursEnd, 4, ' ', 2);
 
-  // if atoi can't find a translation (it returns 0) AND the first character isn't '0' - then something's wrong
-  if ((atoi(hoursStart) == 0 && hoursStart[0] != '0') || (atoi(hoursEnd) == 0 && hoursEnd[0] != '0')) {
+  int8_t hoursStartInt = atoi(hoursStart);
+  int8_t hoursEndInt = atoi(hoursEnd);
+
+  // If atoi can't find a translation (it returns 0) AND the first character isn't '0'
+  // or if hours are not valid
+  // then something's wrong
+  if ((hoursStartInt == 0 && hoursStart[0] != '0') ||
+      (hoursEndInt   == 0 && hoursEnd[0] != '0') ||
+      (hoursStartInt < 0) ||
+      (hoursStartInt > 23) ||
+      (hoursEndInt   < 0) ||
+      (hoursEndInt   > 23)) {
     return false;
   }
 
