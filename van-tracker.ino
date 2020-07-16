@@ -977,7 +977,7 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
   char localHourStr[4];
   int8_t localHourInt = -1;
 
-  char message[107] = {0};
+  char message[111] = {0};
   strcpy_P(message, PSTR("System Time: "));
 
   if (strstr_P(smsValue, PSTR("time set "))) {
@@ -1057,7 +1057,7 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
   else {
     getTime(tempTimeStr);
     strcat(message, tempTimeStr);
-    strcat_P(message, PSTR("\\nTry \"time set\" plus:\\n(current hour of the day 0-23)"));
+    strcat_P(message, PSTR("\\nTry \"time set\" plus:\\n(the current hour of the day 0-23)"));
   }
 
   sendSMS(smsSender, message);
@@ -1188,7 +1188,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[104] = {0};
+  char message[116] = {0};
   char ownerPhoneNumber[15] = {0};
 
   strcpy_P(message, PSTR("Owner: "));
@@ -1212,7 +1212,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\nTry \"owner set\" plus:\\nphone number WITH country code or leave blank for your number"));
+    strcat_P(message, PSTR("\\nTry \"owner set\" plus:\\nphone number WITH country code, or omit number to use your phone's number"));
   }
 
   return sendSMS(smsSender, message);
@@ -1514,7 +1514,7 @@ void getTime(char* currentTimeStr) {
     fona.getTime(currentTimeStr, 23);
 
     // if time string looks good...
-    if (currentTimeStr[0] == '"')
+    if (currentTimeStr[0] == '"' && strlen(currentTimeStr) == 22)
       return;
 
     // else, try simple self-healing.  If echo is on, basically all commands to SIM7000 won't work.
