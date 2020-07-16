@@ -142,6 +142,7 @@ bool g_geofenceWarningCountMessageSent = false;
 int8_t g_followMessageCount = 0;
 
 volatile bool g_volatileKillSwitchOn = false;
+volatile bool g_volatile_debug = false;
 volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 
 //int freeRam () {
@@ -411,6 +412,11 @@ void watchDogForTurnOffGPS() {
 
 void watchDogForKillSwitch() {
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+
+  if (g_volatile_debug) {
+      debugPrintln(F("ISR fired"));
+      g_volatile_debug = false;
+  }
 
   if (g_volatileStartAttemptedWhileKillSwitchOn) {
     char ownerPhoneNumber[15];
@@ -882,6 +888,7 @@ bool handleStatusReq(char* smsSender) {
   char rssiStr[4];
   char currentTimeStr[23];
   char message[141];
+  char hour[3];
 
   char ownerPhoneNumber[15];
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
@@ -900,20 +907,34 @@ bool handleStatusReq(char* smsSender) {
   strcpy_P(message, PSTR("Owner: "));
   strcat(message, &ownerPhoneNumber[1]);
 
-  if (fence)
-    strcat_P(message, PSTR("\\nFence: Enabled"));
-  else
-    strcat_P(message, PSTR("\\nFence: Disabled"));
-
-  if (kill)
-    strcat_P(message, PSTR("\\nKill: Enabled"));
-  else
-    strcat_P(message, PSTR("\\nKill: Disabled"));
-
   if (lockdown)
     strcat_P(message, PSTR("\\nLockdown: Enabled"));
-  else
+  else {
     strcat_P(message, PSTR("\\nLockdown: Disabled"));
+
+    if (fence) {
+      strcat_P(message, PSTR("\\nFence: Enabled "));
+      EEPROM.get(GEOFENCESTART_CHAR_3, hour);
+      strcat(message, hour);
+      strcat_P(message, PSTR("-"));
+      EEPROM.get(GEOFENCEEND_CHAR_3, hour);
+      strcat(message, hour);
+    }
+    else
+      strcat_P(message, PSTR("\\nFence: Disabled"));
+  
+    if (kill) {
+      strcat_P(message, PSTR("\\nKill: Enabled "));
+
+      EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
+      strcat(message, hour);
+      strcat_P(message, PSTR("-"));
+      EEPROM.get(KILLSWITCHEND_CHAR_3, hour);
+      strcat(message, hour);
+    }
+    else
+      strcat_P(message, PSTR("\\nKill: Disabled"));
+  }
 
   strcat_P(message, PSTR("\\nRSSI: "));
   strcat(message, rssiStr);
@@ -1952,6 +1973,10 @@ void pinSetup() {
 
 void starterISR() {
   _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
+
+  // The resistor (hardware) should prevent little spikes from making the ISR fire all the time
+  // but if that's happening, this will show us on the debug output
+  g_volatile_debug = true;
 
   // when starter is on, PIN is LOW
   if (g_volatileKillSwitchOn && !digitalRead(STARTER_INTERRUPT_PIN))
