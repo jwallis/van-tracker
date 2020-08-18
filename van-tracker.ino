@@ -1629,17 +1629,25 @@ void deleteSMS(int8_t msg_number) {
   debugBlink(1,3);
 }
 
-void replaceNewlines(char* message) {
+void cleanMessage(bool usePlainSMS, char* message) {
+  // for all SMS
+  //   change double quote char '\"' to single quote '\''
+  // for plainSMS only
+  //   change 3 chars "\\\\n" to newline char '\n'
+
   // strLen does NOT include terminating '\0'
   int16_t strLen = strlen(message);
   int16_t index = 0;
 
-  // Hack for Hologram.io: with SMSoverIP, we send "\\n" for newline.
-  // If we switch to plain SMSs, we need to change those back to plain "\n"
   for (int16_t i = 0; i < strLen; i++) {
-      if (message[i] == '\\' && message[i+1] == 'n') {
+      // Hack for Hologram.io + Twilio: we send send "\\\\n" for newline.
+      // For plain SMSs, we need to change those back to plain "\n"
+      if (usePlainSMS && message[i] == '\\' && message[i+1] == '\\' && message[i+2] == 'n') {
           message[index] = '\n';
-          i++;
+          i+=2;
+      // Also for Hologra.io + Twilio: '"' char messes things up.  Use '\'' char instead
+      } else if (message[i] == '"') {
+          message[index] = '\'';
       } else {
           message[index] = message[i];
       }
@@ -1654,8 +1662,10 @@ bool sendSMS(char* send_to, char* message) {
 
   bool usePlainSMS = false;
   EEPROM.get(USEPLAINSMS_BOOL_1, usePlainSMS);
+
+  cleanMessage(usePlainSMS, message);
+
   if (usePlainSMS) {
-    replaceNewlines(message);
     if (fona.sendSMSSIM7000(send_to, message)) {
       debugBlink(1,6);
       updateLastResetTime();
@@ -1679,7 +1689,7 @@ bool sendSMS(char* send_to, char* message) {
   char hologramSMSString[165];
   int16_t hologramSMSStringLength;
 
-  char devKey[9] = {0};
+  char devKey[9];
   EEPROM.get(DEVKEY_CHAR_9, devKey);
 
   // 00000000 is the default devKey (comes from initEEPROM)
