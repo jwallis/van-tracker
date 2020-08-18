@@ -114,9 +114,10 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define KILLSWITCHEND_CHAR_SAVED_3        104
 
 #define DEVKEY_CHAR_9                     107
+#define TWILIOPHONENUMBER_CHAR_12         116
 
-#define TIMEZONE_CHAR_4                   116
-#define USEPLAINSMS_BOOL_1                120
+#define TIMEZONE_CHAR_4                   128
+#define USEPLAINSMS_BOOL_1                132
 
 const char STR_HOME[] PROGMEM = " feet\\\\nHome: google.com/search?q=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
@@ -679,6 +680,13 @@ void checkSMSInput() {
       continue;
     }
 
+    // "contains" match
+    if (strstr_P(smsValue, PSTR("twilio"))) {
+      handleTwilioReq(smsSender, smsValue);
+      deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     // exact match
     if (strcmp_P(smsValue, PSTR("status")) == 0) {
       if (handleStatusReq(smsSender))
@@ -905,7 +913,7 @@ bool handleStatusReq(char* smsSender) {
   getTime(currentTimeStr);
 
   strcpy_P(message, PSTR("Owner: "));
-  strcat(message, &ownerPhoneNumber[1]);
+  strcat(message, &ownerPhoneNumber[1]);  // strip + from phone number "+15559998888"
 
   if (lockdown)
     strcat_P(message, PSTR("\\\\nLockdown: Enabled"));
@@ -1250,6 +1258,16 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
   // set devKey
   if (strstr_P(smsValue, PSTR("devkey set"))) {
     EEPROM.put(DEVKEY_CHAR_9, devKey);
+    sendSMS(smsSender, F("Ok"));
+  }
+}
+
+void handleTwilioReq(char* smsSender, char* smsValue) {
+  char twilioPhoneNumber[12];
+  getOccurrenceInDelimitedString(smsValue, twilioPhoneNumber, 3, ' ', 11); // max_length
+
+  if (strstr_P(smsValue, PSTR("twilio set"))) {
+    EEPROM.put(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);
     sendSMS(smsSender, F("Ok"));
   }
 }
@@ -1678,15 +1696,25 @@ bool sendSMS(char* send_to, char* message) {
     }
   }
 
-  // Example of hologramSMSString: "Saaaabbbb+15556667777 Hello, SMS over IP World!"
-  // 'S' (tells Hologram that it's an SMS):               1
-  // devKey:                                              8
-  // phone number including '+' and 3-digit country code: 14
-  // ' ' (required by Hologram):                          1
-  // the message:                                         140
-  // '\0' (it's null-terminated C string!):               1
+  // Example of hologramSMSString: 
+  // "{\"k\":\"aaaabbbb\",\"d\":\"{\\\"t\\\":\\\"1115556667777\\\",\\\"f\\\":\\\"19998887777\\\",\\\"m\\\":\\\"this is the message\\\"}\",\"t\":\"TWIL\"}"
+  // ...in other words:
+  // {"k":"aaaabbbb","d":"{\"t\":\"1115556667777\",\"f\":\"19998887777\",\"m\":\"this is the message\"}","t":"TWIL"}
+  //
+  // devkey identifier                        {"k":"                  6
+  // devkey                                   aaaabbbb                8
+  // data identifier                          ","d":                  6
+  // phone number identifier                  "{\"t\":                8
+  // to phone number (3-digit country code)   \"1115556667777\"       17
+  // message identifier                       ,\"f\":                 7
+  // from twilio phone number (USA #)         \"19998887777\"         15
+  // message identifier                       ,\"m\":                 7
+  // the message (140) plus \" twice          \"...\"                 154       // we have to turn every 1 newline char '\n' into 3 chars "\\\\n" so we need a little more than 144 chars
+  // topic identifier                         }","t":                 7
+  // topic plus close brace                   "TWIL"}                 7
+  // null-terminator for C string             \0                      1
 
-  char hologramSMSString[165];
+  char hologramSMSString[243];
   int16_t hologramSMSStringLength;
 
   char devKey[9];
@@ -1698,12 +1726,19 @@ bool sendSMS(char* send_to, char* message) {
     debugBlink(2,9);
     return true;
   }
+
+  char twilioPhoneNumber[12];
+  EEPROM.get(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);  
   
-  strcpy_P(hologramSMSString, PSTR("S"));
+  strcpy_P(hologramSMSString, PSTR("{\"k\":\""));
   strcat(hologramSMSString, devKey);
-  strcat(hologramSMSString, send_to);
-  strcat_P(hologramSMSString, PSTR(" "));
+  strcat_P(hologramSMSString, PSTR("\",\"d\":\"{\\\"t\\\":\\\""));
+  strcat(hologramSMSString, &send_to[1]);    // strip + from phone number "+15559998888"
+  strcat_P(hologramSMSString, PSTR("\\\",\\\"f\\\":\\\""));
+  strcat(hologramSMSString, twilioPhoneNumber);
+  strcat_P(hologramSMSString, PSTR("\\\",\\\"m\\\":\\\""));
   strcat(hologramSMSString, message);
+  strcat(hologramSMSString, "\\\"}\",\"t\":\"TWIL\"}");
   hologramSMSStringLength = strlen(hologramSMSString);
   
   debugPrint(F("SMS: "));
@@ -2131,6 +2166,7 @@ void initEEPROM() {
   EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, "00");
   
   EEPROM.put(DEVKEY_CHAR_9, "00000000");
+  EEPROM.put(TWILIOPHONENUMBER_CHAR_12, "00000000000");
   
   EEPROM.put(TIMEZONE_CHAR_4, "-20");
   EEPROM.put(USEPLAINSMS_BOOL_1, false);
@@ -2251,6 +2287,9 @@ void getEEPROM() {
   debugPrintln(tempc);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, tempc);
   debugPrint(F("OWNER: "));
+  debugPrintln(tempc);
+  EEPROM.get(TWILIOPHONENUMBER_CHAR_12, tempc);
+  debugPrint(F("TWILIO: "));
   debugPrintln(tempc);
   EEPROM.get(DEVKEY_CHAR_9, tempc);
   debugPrint(F("DEVKEY: "));
