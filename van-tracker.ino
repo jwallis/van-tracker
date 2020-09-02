@@ -1251,7 +1251,11 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
 
   // special: smsValue is still case-sensitive.
   char devKey[9];
-  getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8); // max_length
+  if (!getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8))   // max_length
+    return;
+
+  if (strlen(devKey) < 8)
+    return;
 
   EEPROM.put(DEVKEY_CHAR_9, devKey);
   sendSMS(smsSender, F("Ok"));
@@ -1259,7 +1263,11 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
 
 void handleTwilioReq(char* smsSender, char* smsValue) {
   char twilioPhoneNumber[12];
-  getOccurrenceInDelimitedString(smsValue, twilioPhoneNumber, 3, ' ', 11); // max_length
+  if (!getOccurrenceInDelimitedString(smsValue, twilioPhoneNumber, 3, ' ', 11))   // max_length
+    return;
+
+  if (strlen(twilioPhoneNumber) < 11)
+    return;
 
   EEPROM.put(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);
   sendSMS(smsSender, F("Ok"));
@@ -1750,6 +1758,7 @@ bool sendSMS(char* send_to, char* message) {
   } else {
     // see very top for debug blink code meanings (which in this case are coming from the cellular module
     debugBlink(2,successCode);
+    delay(3000);
     g_totalFailedSendSMSAttempts++;
     return false;
   }
@@ -2041,7 +2050,7 @@ void setupSimCom() {
 
     if (fona.getNumSMSSIM7000() >= 0) {
       debugPrintln(F("\nSucc"));
-      g_SimComConnectionStatus = 2;
+      g_SimComConnectionStatus = 2; // set to 2 because setupSimCom() needs to be followed by waitUntilNetworkConnected() which will update g_SimComConnectionStatus = 0
       debugBlink(0,4);
       return;
     }
