@@ -2330,7 +2330,7 @@ void handleSerialInput(String command) {
     resetSystem();
   }
 //  if (strcmp_P(temp, PSTR("m")) == 0) {
-//    char send_to[13]="+15127500974";
+//    char send_to[13]="+15120000000";
 //    char message[4]="abc";
 //    fona.sendSMS(send_to, message);
 //  }
