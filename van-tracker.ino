@@ -13,8 +13,8 @@ Blink debug codes - the Arduino Nono will blink these codes during operation:
 Basic info codes (0 longs followed by THIS MANY shorts):
   1 = about to check inbound SMSs
   2 = about to execute watchdog processes
-  3 = scheduled SimCom chip reset
-  4 = connected to SimCom successfully
+  3 = about to reset SimCom chip
+  4 = after powering on, Arduino successfully connected to SimCom chip
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = not used (see below for error codes in failure to send SMS)
@@ -114,11 +114,12 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define KILLSWITCHEND_CHAR_SAVED_3        104
 
 #define DEVKEY_CHAR_9                     107
+#define TWILIOPHONENUMBER_CHAR_12         116
 
-#define TIMEZONE_CHAR_4                   116
-#define USEPLAINSMS_BOOL_1                120
+#define TIMEZONE_CHAR_4                   128
+#define USEPLAINSMS_BOOL_1                132
 
-const char STR_HOME[] PROGMEM = " feet\\nHome: google.com/search?q=";
+const char STR_HOME[] PROGMEM = " feet\\\\nHome: google.com/search?q=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
 
 // g_SimComConnectionStatus status meanings
@@ -423,7 +424,7 @@ void watchDogForKillSwitch() {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
-    sendSMS(ownerPhoneNumber, F("WARNING!\\nStart attempted while kill switch active"));
+    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted while kill switch active"));
     g_volatileStartAttemptedWhileKillSwitchOn = false;
   }
 }
@@ -450,7 +451,7 @@ bool watchDogForFollow(char* currentLat, char* currentLon, char* currentSpeed, c
 
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    sendSMS(ownerPhoneNumber, F("Follow auto-disabled. Use \"follow enable\" to re-enable"));  
+    sendSMS(ownerPhoneNumber, F("Follow auto-disabled. Use 'follow enable' to re-enable"));  
   }
   else {
     bool usePlainSMS = false;
@@ -528,22 +529,22 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  char message[141];      // SMS max len = 140
+  char message[146];
 
   if (follow)
     strcpy_P(message, PSTR("FOLLOW MODE"));
   else
     strcpy_P(message, PSTR("FENCE WARNING!"));
 
-  strcat_P(message, PSTR("\\nCurrent:\\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\\\nCurrent:\\\\ngoogle.com/search?q="));
   strcat(message, currentLat);
   strcat_P(message, PSTR(","));
   strcat(message, currentLon);
-  strcat_P(message, PSTR("\\nHome:\\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\\\nHome:\\\\ngoogle.com/search?q="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
-  strcat_P(message, PSTR("\\nDir: "));
+  strcat_P(message, PSTR("\\\\nDir: "));
   strcat(message, currentDir);
   strcat_P(message, PSTR(" @ "));
   strcat(message, currentSpeed);
@@ -552,7 +553,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Emergency Only:\\nUse \"follow enable\" to receive location updates, \"follow disable\" to stop"));
+    sendSMS(ownerPhoneNumber, F("Emergency Only:\\\\nUse 'follow enable' to receive location updates, 'follow disable' to stop"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -679,6 +680,13 @@ void checkSMSInput() {
       continue;
     }
 
+    // "contains" match
+    if (strstr_P(smsValue, PSTR("twilio"))) {
+      handleTwilioReq(smsSender, smsValue);
+      deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     // exact match
     if (strcmp_P(smsValue, PSTR("status")) == 0) {
       if (handleStatusReq(smsSender))
@@ -713,7 +721,7 @@ void checkSMSInput() {
 }
 
 bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) {
-  char message[135];
+  char message[137];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
@@ -727,7 +735,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     
-    strcpy_P(message, PSTR("Lockdown Enabled. Try \"unlock\" before updating fence or kill\\nRadius: "));
+    strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or kill\\\\nRadius: "));
     strcat(message, geofenceRadius);
     strcat_P(message, STR_HOME);
     strcat(message, geofenceHomeLat);
@@ -743,7 +751,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
       
 bool handleLockReq(char* smsSender) {
 
-  char message[123];
+  char message[125];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
@@ -814,7 +822,7 @@ bool handleLockReq(char* smsSender) {
   }
 
   // send SMS with new geofence home
-  strcat_P(message, PSTR(" Enabled\\nRadius: "));
+  strcat_P(message, PSTR(" Enabled\\\\nRadius: "));
   strcat(message, geofenceRadius);
   strcat_P(message, STR_HOME);
   strcat(message, geofenceHomeLat);
@@ -826,7 +834,7 @@ bool handleLockReq(char* smsSender) {
 
 bool handleUnlockReq(char* smsSender) {
 
-  char message[123];
+  char message[126];
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
@@ -873,7 +881,7 @@ bool handleUnlockReq(char* smsSender) {
   }
 
   // send SMS with original geofenceHome
-  strcpy_P(message, PSTR("Lockdown: Disabled\\nRadius: "));
+  strcpy_P(message, PSTR("Lockdown: Disabled\\\\nRadius: "));
   strcat(message, geofenceRadius);
   strcat_P(message, STR_HOME);
   strcat(message, geofenceHomeLat);
@@ -887,7 +895,7 @@ bool handleStatusReq(char* smsSender) {
   int8_t rssi;
   char rssiStr[4];
   char currentTimeStr[23];
-  char message[141];
+  char message[146];
   char hour[3];
 
   char ownerPhoneNumber[15];
@@ -905,15 +913,15 @@ bool handleStatusReq(char* smsSender) {
   getTime(currentTimeStr);
 
   strcpy_P(message, PSTR("Owner: "));
-  strcat(message, &ownerPhoneNumber[1]);
+  strcat(message, &ownerPhoneNumber[1]);  // strip + from phone number "+15559998888"
 
   if (lockdown)
-    strcat_P(message, PSTR("\\nLockdown: Enabled"));
+    strcat_P(message, PSTR("\\\\nLockdown: Enabled"));
   else {
-    strcat_P(message, PSTR("\\nLockdown: Disabled"));
+    strcat_P(message, PSTR("\\\\nLockdown: Disabled"));
 
     if (fence) {
-      strcat_P(message, PSTR("\\nFence: Enabled "));
+      strcat_P(message, PSTR("\\\\nFence: Enabled "));
       EEPROM.get(GEOFENCESTART_CHAR_3, hour);
       strcat(message, hour);
       strcat_P(message, PSTR("-"));
@@ -921,10 +929,10 @@ bool handleStatusReq(char* smsSender) {
       strcat(message, hour);
     }
     else
-      strcat_P(message, PSTR("\\nFence: Disabled"));
+      strcat_P(message, PSTR("\\\\nFence: Disabled"));
   
     if (kill) {
-      strcat_P(message, PSTR("\\nKill: Enabled "));
+      strcat_P(message, PSTR("\\\\nKill: Enabled "));
 
       EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
       strcat(message, hour);
@@ -933,18 +941,18 @@ bool handleStatusReq(char* smsSender) {
       strcat(message, hour);
     }
     else
-      strcat_P(message, PSTR("\\nKill: Disabled"));
+      strcat_P(message, PSTR("\\\\nKill: Disabled"));
   }
 
-  strcat_P(message, PSTR("\\nRSSI: "));
+  strcat_P(message, PSTR("\\\\nRSSI: "));
   strcat(message, rssiStr);
-  strcat_P(message, PSTR("\\nSystem Time: "));
+  strcat_P(message, PSTR("\\\\nSystem Time: "));
   strcat(message, currentTimeStr);
   return sendSMS(smsSender, message);
 }
 
 bool handleLocReq(char* smsSender) {
-  char message[80];
+  char message[82];
   char latitude[12];
   char longitude[12];
   char speed[4];
@@ -955,7 +963,7 @@ bool handleLocReq(char* smsSender) {
     strcat(message, latitude);
     strcat_P(message, PSTR(","));
     strcat(message, longitude);
-    strcat_P(message, PSTR("\\nDir: "));
+    strcat_P(message, PSTR("\\\\nDir: "));
     strcat(message, dir);
     strcat_P(message, PSTR(" @ "));
     strcat(message, speed);
@@ -991,14 +999,14 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Disabled"));
   }
-  return sendSMS(smsSender, F("Try \"follow\" plus:\\nenable/disable"));
+  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable/disable"));
 }
 
 bool handleTimeReq(char* smsSender, char* smsValue) {
   char localHourStr[4];
   int8_t localHourInt = -1;
 
-  char message[111] = {0};
+  char message[113] = {0};
   strcpy_P(message, PSTR("System Time: "));
 
   if (strstr_P(smsValue, PSTR("time set "))) {
@@ -1078,7 +1086,7 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
   else {
     getTime(tempTimeStr);
     strcat(message, tempTimeStr);
-    strcat_P(message, PSTR("\\nTry \"time set\" plus:\\n(the current hour of the day 0-23)"));
+    strcat_P(message, PSTR("\\\\nTry 'time set' plus:\\\\n(the current hour of the day 0-23)"));
   }
 
   sendSMS(smsSender, message);
@@ -1091,7 +1099,7 @@ bool handleBothReq(char* smsSender, char* smsValue) {
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[65] = {0};
+  char message[69] = {0};
 
   bool validMessage = false;
   bool killSwitchEnabled;
@@ -1104,9 +1112,9 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (killSwitchEnabled)
-      strcpy_P(message, PSTR("Kill: Enabled\\nHours: "));
+      strcpy_P(message, PSTR("Kill: Enabled\\\\nHours: "));
     else
-      strcpy_P(message, PSTR("Kill: Disabled\\nHours: "));
+      strcpy_P(message, PSTR("Kill: Disabled\\\\nHours: "));
 
     strcat(message, killSwitchStart);
     strcat_P(message, PSTR("-"));
@@ -1122,20 +1130,20 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
     // "both" was an afterthought, so this section was a retrofit.
     // The point is, we handle responding to invalid messages for the "both" command here in handleKillSwitchReq()
 
-    strcpy_P(message, PSTR("Try \""));
+    strcpy_P(message, PSTR("Try '"));
     if (alternateSMSOnFailure) {
       strcat_P(message, PSTR("both"));
     }
     else {
       strcat_P(message, PSTR("kill"));
     }
-    strcat_P(message, PSTR("\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)"));
+    strcat_P(message, PSTR("' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)"));
     return sendSMS(smsSender, message);
   }
 }
 
 bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[135] = {0};
+  char message[139] = {0};
 
   bool validMessage = false;
   bool geofenceEnabled;
@@ -1175,9 +1183,9 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (geofenceEnabled)
-      strcat_P(message, PSTR("Fence: Enabled\\nHours: "));
+      strcat_P(message, PSTR("Fence: Enabled\\\\nHours: "));
     else
-      strcat_P(message, PSTR("Fence: Disabled\\nHours: "));
+      strcat_P(message, PSTR("Fence: Disabled\\\\nHours: "));
 
     strcat(message, geofenceStart);
     strcat_P(message, PSTR("-"));
@@ -1185,7 +1193,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
     if (strcmp(geofenceStart, geofenceEnd) == 0) {  // if start time == end time  
       strcat_P(message, PSTR(" (always on)"));
     }
-    strcat_P(message, PSTR("\\nRadius: "));
+    strcat_P(message, PSTR("\\\\nRadius: "));
     strcat(message, geofenceRadius);
     strcat_P(message, STR_HOME);
     strcat(message, geofenceHomeLat);
@@ -1203,13 +1211,13 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try \"fence\" plus:\\nenable/disable\\nstatus\\nhours 0 21 (12am-9pm)\\nhome (uses current loc)\\nradius 300 (300 feet)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 300 (300 feet)"));
     }
   }
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[116] = {0};
+  char message[118] = {0};
   char ownerPhoneNumber[15] = {0};
 
   strcpy_P(message, PSTR("Owner: "));
@@ -1233,7 +1241,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\nTry \"owner set\" plus:\\nphone number WITH country code, or omit number to use your phone's number"));
+    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number"));
   }
 
   return sendSMS(smsSender, message);
@@ -1254,8 +1262,18 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
   }
 }
 
+void handleTwilioReq(char* smsSender, char* smsValue) {
+  char twilioPhoneNumber[12];
+  getOccurrenceInDelimitedString(smsValue, twilioPhoneNumber, 3, ' ', 11); // max_length
+
+  if (strstr_P(smsValue, PSTR("twilio set"))) {
+    EEPROM.put(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);
+    sendSMS(smsSender, F("Ok"));
+  }
+}
+
 bool handleCommandsReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\nstatus\\nfence\\nkill\\nboth\\nlock/unlock\\nloc\\nfollow\\nowner\\ntime"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\ntime"));
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1629,17 +1647,25 @@ void deleteSMS(int8_t msg_number) {
   debugBlink(1,3);
 }
 
-void replaceNewlines(char* message) {
+void cleanMessage(bool usePlainSMS, char* message) {
+  // for all SMS
+  //   change double quote char '\"' to single quote '\''
+  // for plainSMS only
+  //   change 3 chars "\\\\n" to newline char '\n'
+
   // strLen does NOT include terminating '\0'
   int16_t strLen = strlen(message);
   int16_t index = 0;
 
-  // Hack for Hologram.io: with SMSoverIP, we send "\\n" for newline.
-  // If we switch to plain SMSs, we need to change those back to plain "\n"
   for (int16_t i = 0; i < strLen; i++) {
-      if (message[i] == '\\' && message[i+1] == 'n') {
+      // Hack for Hologram.io + Twilio: we send send "\\\\n" for newline.
+      // For plain SMSs, we need to change those back to plain "\n"
+      if (usePlainSMS && message[i] == '\\' && message[i+1] == '\\' && message[i+2] == 'n') {
           message[index] = '\n';
-          i++;
+          i+=2;
+      // Also for Hologra.io + Twilio: '"' char messes things up.  Use '\'' char instead
+      } else if (message[i] == '"') {
+          message[index] = '\'';
       } else {
           message[index] = message[i];
       }
@@ -1654,8 +1680,10 @@ bool sendSMS(char* send_to, char* message) {
 
   bool usePlainSMS = false;
   EEPROM.get(USEPLAINSMS_BOOL_1, usePlainSMS);
+
+  cleanMessage(usePlainSMS, message);
+
   if (usePlainSMS) {
-    replaceNewlines(message);
     if (fona.sendSMSSIM7000(send_to, message)) {
       debugBlink(1,6);
       updateLastResetTime();
@@ -1668,18 +1696,28 @@ bool sendSMS(char* send_to, char* message) {
     }
   }
 
-  // Example of hologramSMSString: "Saaaabbbb+15556667777 Hello, SMS over IP World!"
-  // 'S' (tells Hologram that it's an SMS):               1
-  // devKey:                                              8
-  // phone number including '+' and 3-digit country code: 14
-  // ' ' (required by Hologram):                          1
-  // the message:                                         140
-  // '\0' (it's null-terminated C string!):               1
+  // Example of hologramSMSString: 
+  // "{\"k\":\"aaaabbbb\",\"d\":\"{\\\"t\\\":\\\"1115556667777\\\",\\\"f\\\":\\\"19998887777\\\",\\\"m\\\":\\\"this is the message\\\"}\",\"t\":\"TWIL\"}"
+  // ...in other words:
+  // {"k":"aaaabbbb","d":"{\"t\":\"1115556667777\",\"f\":\"19998887777\",\"m\":\"this is the message\"}","t":"TWIL"}
+  //
+  // devkey identifier                        {"k":"                  6
+  // devkey                                   aaaabbbb                8
+  // data identifier                          ","d":                  6
+  // phone number identifier                  "{\"t\":                8
+  // to phone number (3-digit country code)   \"1115556667777\"       17
+  // message identifier                       ,\"f\":                 7
+  // from twilio phone number (USA #)         \"19998887777\"         15
+  // message identifier                       ,\"m\":                 7
+  // the message (140) plus \" twice          \"...\"                 154       // we have to turn every 1 newline char '\n' into 3 chars "\\\\n" so we need a little more than 144 chars
+  // topic identifier                         }","t":                 7
+  // topic plus close brace                   "TWIL"}                 7
+  // null-terminator for C string             \0                      1
 
-  char hologramSMSString[165];
+  char hologramSMSString[243];
   int16_t hologramSMSStringLength;
 
-  char devKey[9] = {0};
+  char devKey[9];
   EEPROM.get(DEVKEY_CHAR_9, devKey);
 
   // 00000000 is the default devKey (comes from initEEPROM)
@@ -1688,12 +1726,19 @@ bool sendSMS(char* send_to, char* message) {
     debugBlink(2,9);
     return true;
   }
+
+  char twilioPhoneNumber[12];
+  EEPROM.get(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);  
   
-  strcpy_P(hologramSMSString, PSTR("S"));
+  strcpy_P(hologramSMSString, PSTR("{\"k\":\""));
   strcat(hologramSMSString, devKey);
-  strcat(hologramSMSString, send_to);
-  strcat_P(hologramSMSString, PSTR(" "));
+  strcat_P(hologramSMSString, PSTR("\",\"d\":\"{\\\"t\\\":\\\""));
+  strcat(hologramSMSString, &send_to[1]);    // strip + from phone number "+15559998888"
+  strcat_P(hologramSMSString, PSTR("\\\",\\\"f\\\":\\\""));
+  strcat(hologramSMSString, twilioPhoneNumber);
+  strcat_P(hologramSMSString, PSTR("\\\",\\\"m\\\":\\\""));
   strcat(hologramSMSString, message);
+  strcat(hologramSMSString, "\\\"}\",\"t\":\"TWIL\"}");
   hologramSMSStringLength = strlen(hologramSMSString);
   
   debugPrint(F("SMS: "));
@@ -2121,6 +2166,7 @@ void initEEPROM() {
   EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, "00");
   
   EEPROM.put(DEVKEY_CHAR_9, "00000000");
+  EEPROM.put(TWILIOPHONENUMBER_CHAR_12, "00000000000");
   
   EEPROM.put(TIMEZONE_CHAR_4, "-20");
   EEPROM.put(USEPLAINSMS_BOOL_1, false);
@@ -2205,7 +2251,7 @@ void putEEPROM() {
 }
 
 void getEEPROM() {
-  char tempc[24];
+  char tempc[24] = {0};
   bool tempb;
   int16_t tempi;
 
@@ -2241,6 +2287,9 @@ void getEEPROM() {
   debugPrintln(tempc);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, tempc);
   debugPrint(F("OWNER: "));
+  debugPrintln(tempc);
+  EEPROM.get(TWILIOPHONENUMBER_CHAR_12, tempc);
+  debugPrint(F("TWILIO: "));
   debugPrintln(tempc);
   EEPROM.get(DEVKEY_CHAR_9, tempc);
   debugPrint(F("DEVKEY: "));
@@ -2281,7 +2330,7 @@ void handleSerialInput(String command) {
     resetSystem();
   }
 //  if (strcmp_P(temp, PSTR("m")) == 0) {
-//    char send_to[13]="+15127500974";
+//    char send_to[13]="+15120000000";
 //    char message[4]="abc";
 //    fona.sendSMS(send_to, message);
 //  }
