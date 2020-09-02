@@ -672,8 +672,8 @@ void checkSMSInput() {
     }
 
     // "contains" match
-    if (strstr_P(smsValue, PSTR("devkey"))) {
-      // special: we want to pass the case-sensitive version to handleDevKeyReq because the devKey is case sensitive
+    if (strstr_P(smsValue, PSTR("devkey set"))) {
+      // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
       fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
       handleDevKeyReq(smsSender, smsValue);
       deleteSMS(smsSlotNumber);
@@ -681,7 +681,7 @@ void checkSMSInput() {
     }
 
     // "contains" match
-    if (strstr_P(smsValue, PSTR("twilio"))) {
+    if (strstr_P(smsValue, PSTR("twilio set"))) {
       handleTwilioReq(smsSender, smsValue);
       deleteSMS(smsSlotNumber);
       continue;
@@ -1253,23 +1253,16 @@ void handleDevKeyReq(char* smsSender, char* smsValue) {
   char devKey[9];
   getOccurrenceInDelimitedString(smsValue, devKey, 3, ' ', 8); // max_length
 
-  toLower(smsValue);
-  
-  // set devKey
-  if (strstr_P(smsValue, PSTR("devkey set"))) {
-    EEPROM.put(DEVKEY_CHAR_9, devKey);
-    sendSMS(smsSender, F("Ok"));
-  }
+  EEPROM.put(DEVKEY_CHAR_9, devKey);
+  sendSMS(smsSender, F("Ok"));
 }
 
 void handleTwilioReq(char* smsSender, char* smsValue) {
   char twilioPhoneNumber[12];
   getOccurrenceInDelimitedString(smsValue, twilioPhoneNumber, 3, ' ', 11); // max_length
 
-  if (strstr_P(smsValue, PSTR("twilio set"))) {
-    EEPROM.put(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);
-    sendSMS(smsSender, F("Ok"));
-  }
+  EEPROM.put(TWILIOPHONENUMBER_CHAR_12, twilioPhoneNumber);
+  sendSMS(smsSender, F("Ok"));
 }
 
 bool handleCommandsReq(char* smsSender) {
