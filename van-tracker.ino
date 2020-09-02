@@ -13,8 +13,8 @@ Blink debug codes - the Arduino Nono will blink these codes during operation:
 Basic info codes (0 longs followed by THIS MANY shorts):
   1 = about to check inbound SMSs
   2 = about to execute watchdog processes
-  3 = scheduled SimCom chip reset
-  4 = connected to SimCom successfully
+  3 = about to reset SimCom chip
+  4 = after powering on, Arduino successfully connected to SimCom chip
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = not used (see below for error codes in failure to send SMS)
