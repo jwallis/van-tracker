@@ -529,7 +529,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  char message[146];
+  char message[147];
 
   if (follow)
     strcpy_P(message, PSTR("FOLLOW MODE"));
@@ -548,7 +548,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   strcat(message, currentDir);
   strcat_P(message, PSTR(" @ "));
   strcat(message, currentSpeed);
-  strcat_P(message, PSTR("kph"));
+  strcat_P(message, PSTR(" kph"));
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
@@ -952,7 +952,7 @@ bool handleStatusReq(char* smsSender) {
 }
 
 bool handleLocReq(char* smsSender) {
-  char message[82];
+  char message[83];
   char latitude[12];
   char longitude[12];
   char speed[4];
@@ -967,7 +967,7 @@ bool handleLocReq(char* smsSender) {
     strcat(message, dir);
     strcat_P(message, PSTR(" @ "));
     strcat(message, speed);
-    strcat_P(message, PSTR("kph"));
+    strcat_P(message, PSTR(" kph"));
   } else {
     strcpy_P(message, STR_UNABLE_GPS);
   }
@@ -1414,6 +1414,10 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
         getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
         getDirFromDegrees(dir);
       }
+
+      // change "75." to "75"
+      if (speed[2] == '.')
+        speed[2] = '\0';
   
       // We have see errors where the lat,long come back as garbage like "9,43"
       // Leave the != NULL in there in case the '.' is at the 0th position, which I think is valid
