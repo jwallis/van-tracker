@@ -457,10 +457,7 @@ bool watchDogForFollow(char* currentLat, char* currentLon, char* currentSpeed, c
     bool usePlainSMS = false;
     EEPROM.get(USEPLAINSMS_BOOL_1, usePlainSMS);
   
-    if (usePlainSMS)  // if we're using plain (expensive) SMSs, only send about once every 3 minutes
-      delay(150000);
-    else              // every 1.5 minutes or so
-      delay(60000);
+    delay(40000);  // send a Follow message every minute or so
   }
 
   return true;
