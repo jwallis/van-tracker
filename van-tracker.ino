@@ -155,6 +155,7 @@ volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 void setup() {
 
   pinSetup();
+  setKillSwitchPins(isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
   
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
@@ -1581,6 +1582,27 @@ int8_t getTimePartInt(int16_t index, char* timeStr) {
   timePartStr[1] = timeStr[index+1];
   timePartStr[2] = '\0';
   return atoi(timePartStr);
+}
+
+bool isAlwaysOn(int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd) {
+  // takes into account both "enabled" option
+  // as well as the "hours"
+
+  bool enabled;
+  EEPROM.get(eepromEnabled, enabled);
+  if (!enabled)
+    return false;
+
+  char startHour[3];
+  char endHour[3];
+  EEPROM.get(eepromStart, startHour);
+  EEPROM.get(eepromEnd, endHour);
+
+  // if start and end are the same, the fence/kill switch is ALWAYS on
+  if (strcmp(startHour, endHour) == 0)
+    return true;
+
+  return false;
 }
 
 bool isActive(int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd) {
