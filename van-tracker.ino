@@ -76,8 +76,6 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SIMCOM_TX_PIN 4
 
 #define KILL_SWITCH_RELAY_PIN 5
-#define KILL_SWITCH_LED_PIN 6
-#define GEOFENCE_LED_PIN 7
 #define DEBUG_PIN 13
 
 // QUOTES ARE PART OF THE STRING: "20/01/31,17:03:01-20"
@@ -474,7 +472,6 @@ void watchDogForGeofence() {
     return;
 
   bool geofenceActive = isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3);
-  setGeofencePins(geofenceActive);
 
   if (!geofenceActive) {
     g_lastGeofenceWarningMinute = -1;
@@ -1799,15 +1796,15 @@ bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 void debugBlink(int8_t longBlinks, int8_t shortBlinks) {
   for (int8_t cnt=0; cnt < longBlinks; cnt++) {
-    digitalWrite(13, HIGH);
+    digitalWrite(DEBUG_PIN, HIGH);
     delay(1000);
-    digitalWrite(13, LOW);
+    digitalWrite(DEBUG_PIN, LOW);
     delay(300);    
   }
   for (int8_t cnt=0; cnt < shortBlinks; cnt++) {
-    digitalWrite(13, HIGH);
+    digitalWrite(DEBUG_PIN, HIGH);
     delay(50);
-    digitalWrite(13, LOW);
+    digitalWrite(DEBUG_PIN, LOW);
     delay(300);
   }
   delay(300);
@@ -2035,9 +2032,7 @@ void pinSetup() {
   pinMode(STARTER_INTERRUPT_PIN, INPUT_PULLUP);                 // when starter is on, PIN is LOW
   attachInterrupt(STARTER_INTERRUPT_ID, starterISR, FALLING);   // when starter is on, PIN is LOW
   
-  pinMode(GEOFENCE_LED_PIN, OUTPUT);
   pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
-  pinMode(KILL_SWITCH_LED_PIN, OUTPUT);
   pinMode(DEBUG_PIN, OUTPUT);
 }
 
@@ -2056,11 +2051,6 @@ void starterISR() {
 void setKillSwitchPins(bool tf) {
   g_volatileKillSwitchOn = tf;
   digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
-  digitalWrite(KILL_SWITCH_LED_PIN, tf);
-}
-
-void setGeofencePins(bool tf) {
-  digitalWrite(GEOFENCE_LED_PIN, tf);
 }
 
 void setupSimCom() {
