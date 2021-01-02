@@ -140,10 +140,10 @@ int8_t g_geofenceWarningCount = 0;
 bool g_geofenceWarningCountMessageSent = false;
 int8_t g_followMessageCount = 0;
 
-volatile bool g_volatileKillSwitchOn = false;
+volatile bool g_volatileKillSwitchActive = false;
 volatile bool g_volatile_debug = false;
 volatile bool g_volatile_kill_switch_initialized = false;
-volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
+volatile bool g_volatileStartAttemptedWhileKillSwitchActive = false;
 
 //int freeRam () {
 //  extern int __heap_start, *__brkval;
@@ -189,8 +189,8 @@ void setup() {
 
   // This is in case we're tied to the door open circuit:
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
-  if (g_volatileKillSwitchOn && !digitalRead(STARTER_INTERRUPT_PIN))
-    g_volatileStartAttemptedWhileKillSwitchOn = true;
+  if (g_volatileKillSwitchActive && !digitalRead(STARTER_INTERRUPT_PIN))
+    g_volatileStartAttemptedWhileKillSwitchActive = true;
 }
 
 void loop() {
@@ -432,13 +432,13 @@ void watchDogForKillSwitch() {
       g_volatile_debug = false;
   }
 
-  if (g_volatileStartAttemptedWhileKillSwitchOn) {
+  if (g_volatileStartAttemptedWhileKillSwitchActive) {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted while kill switch active"));
-    g_volatileStartAttemptedWhileKillSwitchOn = false;
+    g_volatileStartAttemptedWhileKillSwitchActive = false;
   }
 }
 
@@ -2062,12 +2062,12 @@ void starterISR() {
   g_volatile_debug = true;
 
   // when starter is on, PIN is LOW
-  if (g_volatileKillSwitchOn && !digitalRead(STARTER_INTERRUPT_PIN))
-    g_volatileStartAttemptedWhileKillSwitchOn = true;
+  if (g_volatileKillSwitchActive && !digitalRead(STARTER_INTERRUPT_PIN))
+    g_volatileStartAttemptedWhileKillSwitchActive = true;
 }
 
 void setKillSwitchPins(bool tf) {
-  g_volatileKillSwitchOn = tf;
+  g_volatileKillSwitchActive = tf;
   digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
 }
 
