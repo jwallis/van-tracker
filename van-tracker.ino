@@ -183,7 +183,14 @@ void setup() {
 
   updateClock();
   updateLastResetTime();
+  
+  setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
   g_volatile_kill_switch_initialized = true;
+
+  // This is in case we're tied to the door open circuit:
+  // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
+  if (g_volatileKillSwitchOn && !digitalRead(STARTER_INTERRUPT_PIN))
+    g_volatileStartAttemptedWhileKillSwitchOn = true;
 }
 
 void loop() {
