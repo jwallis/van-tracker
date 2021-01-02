@@ -142,6 +142,7 @@ int8_t g_followMessageCount = 0;
 
 volatile bool g_volatileKillSwitchOn = false;
 volatile bool g_volatile_debug = false;
+volatile bool g_volatile_kill_switch_initialized = false;
 volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 
 //int freeRam () {
@@ -153,8 +154,13 @@ volatile bool g_volatileStartAttemptedWhileKillSwitchOn = false;
 void setup() {
 
   pinSetup();
-  setKillSwitchPins(isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
   
+  // if the kill switch is Enabled and Always On, we don't care about the clock, activate it asap
+  if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
+    setKillSwitchPins(true);
+    g_volatile_kill_switch_initialized = true;
+  }
+
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
   initBaud();
@@ -177,6 +183,7 @@ void setup() {
 
   updateClock();
   updateLastResetTime();
+  g_volatile_kill_switch_initialized = true;
 }
 
 void loop() {
@@ -2037,6 +2044,10 @@ void pinSetup() {
 }
 
 void starterISR() {
+
+  if (!g_volatile_kill_switch_initialized)
+    return;
+
   _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
 
   // The resistor (hardware) should prevent little spikes from making the ISR fire all the time
