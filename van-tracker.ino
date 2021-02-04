@@ -2362,10 +2362,13 @@ void handleSerialInput(String command) {
   if (strcmp_P(temp, PSTR("e")) == 0) {
     resetSystem();
   }
+//  if (strcmp_P(temp, PSTR("d")) == 0) {
+//    fona.deleteAllSMS();
+//  }
 //  if (strcmp_P(temp, PSTR("m")) == 0) {
 //    char send_to[13]="+15120000000";
 //    char message[4]="abc";
-//    fona.sendSMS(send_to, message);
+//    fona.sendSMSSIM7000(send_to, message);
 //  }
 
   
