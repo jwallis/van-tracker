@@ -741,6 +741,15 @@ void checkSMSInput() {
       continue;
     }
 
+    // exact match first character
+    if (smsValue[0] == '~') {
+      // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
+      fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
+      handleATCommandReq(smsSender, &smsValue[1]);
+      deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     // default
     if (handleUnknownReq(smsSender))
       deleteSMS(smsSlotNumber);
@@ -1302,6 +1311,21 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 
 bool handleCommandsReq(char* smsSender) {
   return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\ntime"));
+}
+
+void handleATCommandReq(char* smsSender, char* smsValue) {
+  // This is for executing arbitrary AT commands.
+  // if there are " chars, you have to escape them. Example messages:
+  //    ~at+cgdonct=1,\"IP\",\"hologram\"
+  //    ~at+cops=4,1,"AT&T"
+  //    ~at+cops=4,2,310410   // AT&T
+  //    ~at+cops=4,2,310260   // T-Mobile
+  
+  // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
+  char response[141];
+  fona.executeATCommand(smsValue, response, 140);
+  removeNonAlphaNumChars(response);
+  sendSMS(smsSender, response);
 }
 
 bool handleUnknownReq(char* smsSender) {
@@ -1924,6 +1948,17 @@ void insertZero(char *in) {
   }
 }
 
+void sendRawCommand(char* command) {
+  delay(200);
+  fona.println(command);
+  delay(1000);
+
+  if (fona.available()) {
+    flushSimCom();
+  }
+  delay(1000);
+}
+
 void sendRawCommand(const __FlashStringHelper* command) {
   delay(200);
   fona.println(command);
@@ -1968,6 +2003,20 @@ bool getNumberFromString(char* in, char* out, int8_t maxLen) {
   out[outCount] = '\0';
 
   return foundNumber;
+}
+
+void removeNonAlphaNumChars(char* stringToClean) {
+  // Trying to send "AT&T" made the system crash.  Unit went into infinte loop trying and failing to send.
+  // Resolution is to send 10+ SMSs and restart the system (on startup if > 9 SMSs on the module, it will delete them all... for just such an occasion).
+  // To avoid this, we remove all non alphaNum chars.
+  uint8_t len = strlen(stringToClean);
+  for (uint8_t i = 0; i < len; i++) {
+    if (!((stringToClean[i] >= 'a') && (stringToClean[i] <= 'z')) &&
+        !((stringToClean[i] >= 'A') && (stringToClean[i] <= 'Z')) &&
+        !((stringToClean[i] >= '0') && (stringToClean[i] <= '9'))
+       )
+      stringToClean[i] = '_';
+  }
 }
 
 void cleanString(char* stringToClean, char charToClean) {
