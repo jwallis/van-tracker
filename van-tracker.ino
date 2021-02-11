@@ -57,8 +57,8 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VAN_PROD
-//#define VAN_TEST
+//#define VAN_PROD
+#define VAN_TEST
 //#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -2283,7 +2283,7 @@ void initSimCom() {
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
   sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
   sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
-  sendRawCommand(F("AT+COPS=0"));           // Set Cellular OPerator Selection to "automatic"
+  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));           // Set Cellular OPerator Selection to "automatic"
   sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
 
   sendRawCommand(F("AT&W"));                // save writeable settings
@@ -2434,14 +2434,24 @@ void handleSerialInput(String command) {
   if (strcmp_P(temp, PSTR("e")) == 0) {
     resetSystem();
   }
-//  if (strcmp_P(temp, PSTR("d")) == 0) {
-//    fona.deleteAllSMS();
-//  }
-//  if (strcmp_P(temp, PSTR("m")) == 0) {
-//    char send_to[13]="+15120000000";
-//    char message[4]="abc";
-//    fona.sendSMSSIM7000(send_to, message);
-//  }
+  if (strcmp_P(temp, PSTR("d")) == 0) {
+    fona.deleteAllSMS();
+  }
+  if (strcmp_P(temp, PSTR("m")) == 0) {
+    char ownerPhoneNumber[15];
+    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+    char message[7]="ip msg";
+    sendSMS(ownerPhoneNumber, message);
+  }
+  if (strcmp_P(temp, PSTR("n")) == 0) {
+    char ownerPhoneNumber[15];
+    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+    char message[10]="plain msg";
+    fona.sendSMSSIM7000(ownerPhoneNumber, message);
+  }
+
+  
+
 
   
 
