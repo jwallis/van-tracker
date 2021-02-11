@@ -116,6 +116,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 
 #define TIMEZONE_CHAR_4                   128
 #define USEPLAINSMS_BOOL_1                132
+#define POWERON_BOOL_1                    133
 
 const char STR_HOME[] PROGMEM = " feet\\\\nHome: google.com/search?q=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
@@ -191,6 +192,14 @@ void setup() {
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
   if (g_volatileKillSwitchActive && !digitalRead(STARTER_INTERRUPT_PIN))
     g_volatileStartAttemptedWhileKillSwitchActive = true;
+
+
+  char ownerPhoneNumber[15];
+  bool powerOn;
+  EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+  EEPROM.get(POWERON_BOOL_1, powerOn);
+  if (powerOn)
+    sendSMS(ownerPhoneNumber, F("Power on"));
 }
 
 void loop() {
@@ -721,6 +730,15 @@ void checkSMSInput() {
     if (strcmp_P(smsValue, PSTR("deleteallmessages")) == 0) {
       fona.deleteAllSMS();
       return;  // notice this is RETURN not continue!
+    }
+
+    // "contains" match
+    if (strstr_P(smsValue, PSTR("poweron"))) {
+      // lazy, but that's ok, we don't need error handling here, plus trying to save space
+      EEPROM.put(POWERON_BOOL_1, strstr_P(smsValue, PSTR("enab")));
+      sendSMS(smsSender, F("Ok"));
+      deleteSMS(smsSlotNumber);
+      continue;
     }
 
     // default
@@ -2203,6 +2221,7 @@ void initEEPROM() {
   
   EEPROM.put(TIMEZONE_CHAR_4, "-20");
   EEPROM.put(USEPLAINSMS_BOOL_1, false);
+  EEPROM.put(POWERON_BOOL_1, true);
 
   debugPrintln(F("End initEEPROM()"));
 }
@@ -2330,6 +2349,10 @@ void getEEPROM() {
 
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, tempb);
   debugPrint(F("LOCK_ON: "));
+  debugPrintln(tempb);
+
+  EEPROM.get(POWERON_BOOL_1, tempb);
+  debugPrint(F("POWERON: "));
   debugPrintln(tempb);
 
   EEPROM.get(TIMEZONE_CHAR_4, tempc);
