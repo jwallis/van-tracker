@@ -58,7 +58,8 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_PORT       9999
 
 //#define VAN_PROD
-#define VAN_TEST
+#define VAN_TEST           // Includes debug output to Serial Monitor
+//#define SIMCOM_SERIAL      // Only for interacting with SimCom module using AT commands
 //#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -155,12 +156,6 @@ volatile bool g_volatileStartAttemptedWhileKillSwitchActive = false;
 void setup() {
 
   pinSetup();
-  
-  // if the kill switch is Enabled and Always On, we don't care about the clock, activate it asap
-  if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
-    setKillSwitchPins(true);
-    g_volatile_kill_switch_initialized = true;
-  }
 
 #ifdef NEW_HARDWARE_ONLY
   setupSerial();
@@ -177,6 +172,18 @@ void setup() {
 #ifdef VAN_TEST
   setupSerial();
 #endif
+
+#ifdef SIMCOM_SERIAL
+  setupSerial();
+  setupSimCom();
+  handleSerialInput("S");
+#endif
+  
+  // if the kill switch is Enabled and Always On, we don't care about the clock, activate it asap
+  if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
+    setKillSwitchPins(true);
+    g_volatile_kill_switch_initialized = true;
+  }
 
   setupSimCom();
   waitUntilNetworkConnected(300);
@@ -1316,8 +1323,8 @@ bool handleCommandsReq(char* smsSender) {
 void handleATCommandReq(char* smsSender, char* smsValue) {
   // This is for executing arbitrary AT commands.
   // if there are " chars, you have to escape them. Example messages:
-  //    ~at+cgdonct=1,\"IP\",\"hologram\"
-  //    ~at+cops=4,1,"AT&T"
+  //    ~at+cgdcont=1,\"IP\",\"hologram\"
+  //    ~at+cops=4,1,\"AT&T\"
   //    ~at+cops=4,2,310410   // AT&T
   //    ~at+cops=4,2,310260   // T-Mobile
   
@@ -2206,7 +2213,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   setSimComFuntionality(false);
 }
 
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
 void setupSerial() {
   while (!Serial);
   Serial.begin(9600);
@@ -2343,7 +2350,7 @@ void debugPrintln(uint8_t s) {
 
 
 
-#ifdef VAN_TEST
+#if defined VAN_TEST || defined SIMCOM_SERIAL
 
 void putEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
