@@ -424,7 +424,7 @@ void watchDogForTurnOffGPS() {
 
 
   // if already off, return
-  if (fona.GPSstatusSIM7000() == 0) {
+  if (fona.GPSstatus() == 0) {
     return;
   }
 
@@ -585,7 +585,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
 }
 
 void checkSMSInput() {
-  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
+  int8_t numberOfSMSs = fona.getNumSMS();
   debugPrint(F("SMS: ")); debugPrintln(numberOfSMSs);
 
   if (numberOfSMSs < 1)
@@ -1384,21 +1384,21 @@ bool setGPS(bool tf) {
   //  1 = no GPS fix
   //  2 = 2D fix
   //  3 = 3D fix
-  if (fona.GPSstatusSIM7000() >= 2) {
+  if (fona.GPSstatus() >= 2) {
     g_lastGPSConnAttemptWorked = true;
     return true;
   }
 
   // Keep trying to get a valid (non-error) response. Maybe we should turn off/on?
   for (int8_t i = 1; i < 30; i++) {
-    if (fona.GPSstatusSIM7000() >= 0) {
+    if (fona.GPSstatus() >= 0) {
       break;
     }
     delay(2000);
   }
 
   // error, give up
-  if (fona.GPSstatusSIM7000() < 0) {
+  if (fona.GPSstatus() < 0) {
     debugBlink(1,5);
     g_lastGPSConnAttemptWorked = false;
     fona.enableGPS(false);
@@ -1411,7 +1411,7 @@ bool setGPS(bool tf) {
 
   // wait up to 90s to get GPS fix
   for (int8_t j = 0; j < 23; j++) {
-    if (fona.GPSstatusSIM7000() >= 2) {
+    if (fona.GPSstatus() >= 2) {
       debugBlink(1,8);
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
@@ -1714,7 +1714,7 @@ void checkForDeadMessages() {
   // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
   // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
-  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
+  int8_t numberOfSMSs = fona.getNumSMS();
   if (numberOfSMSs == 10) {
     fona.deleteAllSMS();
   }
@@ -1768,7 +1768,7 @@ bool sendSMS(char* send_to, char* message) {
   cleanMessage(usePlainSMS, message);
 
   if (usePlainSMS) {
-    if (fona.sendSMSSIM7000(send_to, message)) {
+    if (fona.sendSMS(send_to, message)) {
       debugBlink(1,6);
       updateLastResetTime();
       g_totalFailedSendSMSAttempts = 0;   
@@ -2151,9 +2151,9 @@ void setupSimCom() {
   SimComSerial->begin(9600);
 
   for (int8_t i = 0; i < 3; i++) {
-    fona.beginSIM7000(*SimComSerial);
+    fona.begin(*SimComSerial);
 
-    if (fona.getNumSMSSIM7000() >= 0) {
+    if (fona.getNumSMS() >= 0) {
       debugPrintln(F("\nSucc"));
       g_SimComConnectionStatus = 2; // set to 2 because setupSimCom() needs to be followed by waitUntilNetworkConnected() which will update g_SimComConnectionStatus = 0
       debugBlink(0,4);
@@ -2228,11 +2228,11 @@ void initBaud() {
   debugPrintln(F("Trying to connect at 9600"));
   SimComSerial->begin(9600);
 
-  if (! fona.beginSIM7000(*SimComSerial)) {
+  if (! fona.begin(*SimComSerial)) {
     debugPrintln(F("Trying to connect at 115200"));
     SimComSerial->begin(115200);
     
-    if (! fona.beginSIM7000(*SimComSerial)) {
+    if (! fona.begin(*SimComSerial)) {
       debugPrintln(F("ERROR: Could not connect at 9600 or 115200"));
       return;
     } else {
@@ -2457,7 +2457,7 @@ void handleSerialInput(String command) {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     char message[10]="plain msg";
-    fona.sendSMSSIM7000(ownerPhoneNumber, message);
+    fona.sendSMS(ownerPhoneNumber, message);
   }
 
   
