@@ -1353,7 +1353,7 @@ bool handleUnknownReq(char* smsSender) {
 bool setGPS(bool tf) {
   // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
-    if (fona.enableGPSSIM7000(false)) {
+    if (fona.enableGPS(false)) {
       return true;
     }
     return false;
@@ -1401,12 +1401,12 @@ bool setGPS(bool tf) {
   if (fona.GPSstatusSIM7000() < 0) {
     debugBlink(1,5);
     g_lastGPSConnAttemptWorked = false;
-    fona.enableGPSSIM7000(false);
+    fona.enableGPS(false);
     return false;
   }
 
   // turn on
-  fona.enableGPSSIM7000(true);
+  fona.enableGPS(true);
   delay(4000);
 
   // wait up to 90s to get GPS fix
@@ -1428,7 +1428,7 @@ bool setGPS(bool tf) {
   // no fix, give up
   debugBlink(1,7);
   g_lastGPSConnAttemptWorked = false;
-  fona.enableGPSSIM7000(false);
+  fona.enableGPS(false);
   return false;
 }
 
@@ -1463,7 +1463,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     // full string:
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPSSIM7000(0, gpsString, 120);
+      fona.getGPS(0, gpsString, 120);
   
       getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
       getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
@@ -1548,7 +1548,7 @@ bool getGPSTime(char* timeStr) {
     // full string:
     // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPSSIM7000(0, gpsString, 120);
+      fona.getGPS(0, gpsString, 120);
   
       getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
   
@@ -2179,7 +2179,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   secondsToWait = secondsToWait/2;
   
   for (int16_t i = 0; i < secondsToWait; i++) {
-    netConn = fona.getNetworkStatusSIM7000();
+    netConn = fona.getNetworkStatus();
 
     // netConn status meanings:
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
@@ -2238,6 +2238,7 @@ void initBaud() {
     } else {
       debugPrintln(F("Connected at 115200, setting to 9600..."));
       sendRawCommand(F("AT+IPR=9600"));
+      sendRawCommand(F("AT+IPREX=9600"));
       SimComSerial->begin(9600);
     }
   } else {
@@ -2287,6 +2288,8 @@ void initSimCom() {
   debugPrintln(F("Begin initSimCom()"));
 
   sendRawCommand(F("ATZ"));                 // Reset settings
+  sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600
+  sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
   sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
   sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
