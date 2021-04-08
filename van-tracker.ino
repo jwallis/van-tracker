@@ -1416,9 +1416,11 @@ bool setGPS(bool tf) {
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
       // We have to sendRaw() because if we call getGPS we're calling the function that called this function.
-      sendRawCommand(F("AT+CGNSINF"));
+      sendRawCommand(F("AT+CGNSINF"));  // SIM7000
+      sendRawCommand(F("AT+CGPSINFO")); // SIM7500
       delay(3000);
-      sendRawCommand(F("AT+CGNSINF"));
+      sendRawCommand(F("AT+CGNSINF"));  // SIM7000
+      sendRawCommand(F("AT+CGPSINFO")); // SIM7500
       g_lastGPSConnAttemptWorked = true;
       return true;
     }
@@ -2237,8 +2239,8 @@ void initBaud() {
       return;
     } else {
       debugPrintln(F("Connected at 115200, setting to 9600..."));
-      sendRawCommand(F("AT+IPR=9600"));
-      sendRawCommand(F("AT+IPREX=9600"));
+      sendRawCommand(F("AT+IPR=9600"));   // SIM7000
+      sendRawCommand(F("AT+IPREX=9600")); // SIM7500
       SimComSerial->begin(9600);
     }
   } else {
@@ -2288,8 +2290,8 @@ void initSimCom() {
   debugPrintln(F("Begin initSimCom()"));
 
   sendRawCommand(F("ATZ"));                 // Reset settings
-  sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600
-  sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600
+  sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600 (sim7000)
+  sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600 (sim7500)
   sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
   sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
   sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
