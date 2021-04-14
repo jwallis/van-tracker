@@ -306,7 +306,7 @@ bool isClockValid() {
   // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
   // So, this function returns true iff the year < 80.
   int8_t yearIndex = getTimePartInt(YEAR_INDEX);
-  return (yearIndex < 80 && yearIndex > 19);
+  return (yearIndex < 80 && yearIndex > 1);
 }
 
 void updateClock() {
@@ -331,7 +331,7 @@ void updateClock() {
     return;
   }
 
-  // If not, we resort to GPS and the timezone the user has given us
+  // If not, we resort to GPS and the timezone from EEPROM
 
   // From SIM7000 AT command reference:
   //   String type(string should be included in quotation marks) value
@@ -340,24 +340,16 @@ void updateClock() {
   //   in quarters of an hour, between the local time and GMT; range -47...+48). 
   //   E.g. 6th of May 2010, 00:01:52 GMT+2 hours equals to "10/05/06,00:01:52+08".
 
-  // convert
-  // YYYYMMDDhhmmss.xxx
-  // into
-  // AT+CCLK="yy/MM/dd,hh:mm:ss±zz"
-  // AT+CCLK="20/05/01,10:11:12-22"
+  // convert gpsTimeStr
+  //    YYYYMMDDhhmmss.xxx
+  // to simComTimeStr
+  //    "yy/MM/dd,hh:mm:ss±zz"
+  // example
+  //    "21/12/31,10:11:12-22"
   char gpsTimeStr[19];
   if (getGPSTime(gpsTimeStr)) {
 
-    char simComTimeStr[23] = "\"";
-    simComTimeStr[1] = gpsTimeStr[2];
-    simComTimeStr[2] = gpsTimeStr[3];
-    simComTimeStr[3] = '/';
-    simComTimeStr[4] = gpsTimeStr[4];
-    simComTimeStr[5] = gpsTimeStr[5];
-    simComTimeStr[6] = '/';
-    simComTimeStr[7] = gpsTimeStr[6];
-    simComTimeStr[8] = gpsTimeStr[7];
-    simComTimeStr[9] = ',';
+    char simComTimeStr[23] = "\"21/01/01,";   // we don't care about the date, just the time
 
     int8_t gpsHourInt = getTimePartInt(8, gpsTimeStr);
     int8_t tzOffsetInt = atoi(tzOffsetStr) / 4;  // change -48..48 to -12..12
@@ -412,6 +404,7 @@ void updateLastResetTime() {
 void resetSystem() {
   debugBlink(0,3);
   setSimComFuntionality(true);
+
   setupSimCom();
   waitUntilNetworkConnected(120);
   updateClock();
@@ -496,7 +489,7 @@ void watchDogForGeofence() {
   char currentLat[12];
   char currentLon[12];
   char currentSpeed[4];
-  char currentDir[4];
+  char currentDir[3];
 
   if (watchDogForFollow(currentLat, currentLon, currentSpeed, currentDir))
     return;
@@ -999,7 +992,7 @@ bool handleLocReq(char* smsSender) {
   char latitude[12];
   char longitude[12];
   char speed[4];
-  char dir[4];
+  char dir[3];
 
   if (getGPSLatLonSpeedDir(latitude, longitude, speed, dir)) {
     strcpy_P(message, PSTR("google.com/search?q="));
@@ -1416,11 +1409,11 @@ bool setGPS(bool tf) {
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
       // We have to sendRaw() because if we call getGPS we're calling the function that called this function.
-      sendRawCommand(F("AT+CGNSINF"));  // SIM7000
-      sendRawCommand(F("AT+CGPSINFO")); // SIM7500
+      sendRawCommand(F("AT+CGNSINF"));    // SIM7000
+      sendRawCommand(F("AT+CGNSSINFO"));  // SIM7500
       delay(3000);
-      sendRawCommand(F("AT+CGNSINF"));  // SIM7000
-      sendRawCommand(F("AT+CGPSINFO")); // SIM7500
+      sendRawCommand(F("AT+CGNSINF"));    // SIM7000
+      sendRawCommand(F("AT+CGNSSINFO"));  // SIM7500
       g_lastGPSConnAttemptWorked = true;
       return true;
     }
@@ -2175,12 +2168,14 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   debugPrint(F("Network"));
   int8_t netConn;
 
+  fona.setEchoOff();
   fona.setNetworkSettings(APN, F(""), F(""));
 
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
   for (int16_t i = 0; i < secondsToWait; i++) {
+    fona.setEchoOff();
     netConn = fona.getNetworkStatus();
 
     // netConn status meanings:
@@ -2201,7 +2196,8 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
       debugPrintln(F("\nSucc"));
       g_SimComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
-      fona.TCPshut();  // just in case GPRS is still on for some reason, save power
+      fona.TCPshut();                     // just in case GPRS is still on for some reason, save power - SIM7000
+      sendRawCommand(F("AT+NETCLOSE"));   // just in case GPRS is still on for some reason, save power - SIM7500
       return;
     }
     delay(2000);
