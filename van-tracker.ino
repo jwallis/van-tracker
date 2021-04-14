@@ -1453,18 +1453,39 @@ bool getGPSLatLon(char* latitude, char* longitude) {
   
 bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
   char gpsString[120];
+  char NS[2];
+  char EW[2];
 
   if (setGPS(true)){
-    // full string:
-    // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    // full string SIM7000:
+    //    1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    // full string SIM7500:
+    //    2,06,00,00,3012.586830,N,09745.886045,W,080421,220736.0,183.9,0.0,227.5,1.3,1.0,0.8
     for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(0, gpsString, 120);
-  
-      getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
-      getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
+
+      if (fona.type() == SIM7000) {
+        getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
+        getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
+      }
+      else {
+        getOccurrenceInDelimitedString(gpsString, latitude, 5, ',', 11);
+        getOccurrenceInDelimitedString(gpsString, NS, 6, ',');
+        getOccurrenceInDelimitedString(gpsString, longitude, 7, ',', 11);
+        getOccurrenceInDelimitedString(gpsString, EW, 8, ',');
+
+        convertDegreesToDecimal(latitude, NS[0]);
+        convertDegreesToDecimal(longitude, EW[0]);
+      }
       if (speed != NULL) {
-        getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
-        getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
+        if (fona.type() == SIM7000) {
+          getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
+          getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
+        }
+        else {
+          getOccurrenceInDelimitedString(gpsString, speed, 12, ',', 3);
+          getOccurrenceInDelimitedString(gpsString, dir, 13, ',', 3);
+        }
         getDirFromDegrees(dir);
       }
 
@@ -1493,6 +1514,54 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     dir[0] = '\0';
   }
   return false;
+}
+
+void convertDegreesToDecimal(char* inLatStr, char NSEW) {
+  // convert DDmm.mmmmmm (lat) or DDDmm.mmmmmm (lon) to decimal where D = Decimal, m = minute
+  // This SUCKS. Why the hell did they format it like this?
+
+  // NSEW is the char N or S or E or W
+
+  // inLatStr will look like
+  //    3012.586830 (lat)
+  //    or
+  //    12045.88604 or 09745.888562 (lon)
+  float tempFloat;
+  int8_t decimalSize;     // decimalSize will be 2 for latitude or 3 for longitude because lat is between 0..90 while lon is between 0..180
+
+  if (NSEW == 'N' || NSEW == 'S')
+    decimalSize = 2;      // we're working on latitude
+  else
+    decimalSize = 3;
+  
+  // if inLatStr == "09745.888562"
+  // then make tempFloat = 45.888562
+  // this is the "minutes" part of the number
+  tempFloat = atof(&inLatStr[decimalSize]);
+
+  // we want to keep the first 2-3 chars unmolested since they're correct as they are passed into this function.  Add a decimal point.
+  inLatStr[decimalSize] = '.';
+
+  // convert minutes to decimal by dividing by 60
+  tempFloat = tempFloat / 60.0;       // 45.888562 -> 0.7648093
+
+  uint16_t tempInt;
+  // any fancy float -> string functions are too big to use.  i'll write my own.
+  for (int i=decimalSize+1; i<decimalSize+7; i++) {
+    tempFloat = tempFloat * 10;                 // 0.20978 -> 2.0978
+    tempInt = tempFloat;                        // tempInt = 2
+    inLatStr[i] = tempInt + '0';                // tempStr[i] = '2'
+    tempFloat = tempFloat - (float)tempInt;     // 2.0978 -> 0.0978
+  }
+
+  inLatStr[decimalSize+7] = '\0';
+
+  if (NSEW == 'S' || NSEW == 'W') {
+    char tempStr[12];
+    strcpy(tempStr, inLatStr);
+    inLatStr[0] = '-';     // lat or long is negative
+    strcpy(&inLatStr[1], tempStr);
+  }
 }
 
 //bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
@@ -1537,19 +1606,31 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
 //}
 
 bool getGPSTime(char* timeStr) {
+  // timeStr will be in GMT and will look like YYYYMMDDhhmmss.xxx
   char gpsString[120];
+  char tempTimeStr[9];
 
   if (setGPS(true)){
     // full string:
-    // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    // SIM7000: AT+CGNSINF:   +CGNSINF: 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    // SIM7500: AT+CGNSSINFO: +CGNSSINFO: 2,06,00,00,3012.586884,N,09745.881688,W,080421,223651.0,196.1,0.0,0.0,1.5,1.2,0.9
+    //                                           ...,lat        ,S,lon         ,E,DDMMYY,HHmmss.0,  alt,spd,dir,...
+    
     for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(0, gpsString, 120);
-  
-      getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
-  
-      if (strlen(gpsString) > 40 && strstr_P(gpsString, PSTR("1,1,20"))) {
+
+      if (strlen(gpsString) > 40) {
+        if (fona.type() == SIM7000)
+          getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
+        else {
+          getOccurrenceInDelimitedString(gpsString, tempTimeStr, 10, ',');
+          strcpy_P(timeStr, PSTR("20210101_________0"));    // we don't care about the date, this is an edge case
+          strcpy(&timeStr[8], tempTimeStr);                 // overwrite the _________ with the real time... from the exmple above, 20210101_________0 -> 20210101223651.0_0
+          timeStr[16] = '0';                                // and change the '\0' that strcpy left to a '0'... from the exmple above, 20210101223651.0_0 -> 20210101223651.000
+        }
         return true;
       }
+
       delay(2000);
     }
   }
