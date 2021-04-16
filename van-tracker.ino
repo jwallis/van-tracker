@@ -668,17 +668,6 @@ void checkSMSInput() {
     } 
 
     // "contains" match
-    if (strstr_P(smsValue, PSTR("time"))) {
-      // Why send in hours and not the timezone?  If daylight savings goes away in the future, doing calculations based on dates will break
-      // Hopefully this is easy for the user
-      handleTimeReq(smsSender, smsValue);
-
-      // delete regardless, don't retry this one (clock might get set wrong)
-      deleteSMS(smsSlotNumber);
-      continue;
-    } 
-
-    // "contains" match
     if (strstr_P(smsValue, PSTR("kill"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
@@ -1061,104 +1050,12 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable/disable"));
 }
 
-bool handleTimeReq(char* smsSender, char* smsValue) {
-  char localHourStr[4];
-  int8_t localHourInt = -1;
-
-  char message[113] = {0};
-  strcpy_P(message, PSTR("System Time: "));
-
-  if (strstr_P(smsValue, PSTR("time set "))) {
-    getOccurrenceInDelimitedString(smsValue, localHourStr, 3, ' ', 3);
-    localHourInt = atoi(localHourStr);
-
-    // If atoi can't find a translation (it returns 0) AND the first character isn't '0' then something's wrong
-    if (localHourInt == 0 && localHourStr[0] != '0')
-      localHourInt = -1;
-  }
-
-  // We normally don't do this, but we're re-using tempTimeStr here
-  // In the call to enableNTPTimeSync(), it gets formatted as an NTP time string:    "2020/05/26,21:26:21"  INCLUDING quotes
-  // In our response to the user down below, it's formatted as a SimCom time string: "20/01/31,17:03:55-20" INCLUDING quotes
-  char tempTimeStr[23];
-
-  if (localHourInt >= 0 && localHourInt < 24) {
-    char tzOffsetStr[4] = "00";
-    int8_t tzOffsetInt;
-
-    // get current UTC time into tempTimeStr
-    fona.enableNTPTimeSync(tzOffsetStr, tempTimeStr, 22);
-
-    // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
-    int8_t utcHourInt = getTimePartInt(12, tempTimeStr);
-  
-    // set the offset to the difference of what the user sent in and the current utc hour... with some caveats
-    if (localHourInt - utcHourInt > 12)
-      tzOffsetInt = localHourInt - utcHourInt - 24;
-    else {
-      if (localHourInt - utcHourInt < -12)
-        tzOffsetInt = localHourInt - utcHourInt + 24;
-      else
-        tzOffsetInt = localHourInt - utcHourInt;
-    }
-
-    // From SIM7000 AT command reference:
-    //   String type(string should be included in quotation marks) value
-    //   format is "yy/MM/dd,hh:mm:ss±zz", where characters indicate year (two last digits),
-    //   month, day, hour, minutes, seconds and time zone (indicates the difference, expressed 
-    //   in quarters of an hour, between the local time and GMT; range -47...+48). 
-    //   E.g. 6th of May 2010, 00:01:52 GMT+2 hours equals to "10/05/06,00:01:52+08".
-    tzOffsetInt = tzOffsetInt * 4;
-    itoa(tzOffsetInt, tzOffsetStr, 10);
-
-    // change "-5" to "-05"
-    if (tzOffsetInt > -10 && tzOffsetInt < 0) {
-      tzOffsetStr[3] = '\0';
-      tzOffsetStr[2] = tzOffsetStr[1];
-      tzOffsetStr[1] = '0';
-    }
-    // change "4" to "+04"
-    if (tzOffsetInt >=0 && tzOffsetInt < 10) {
-      tzOffsetStr[3] = '\0';
-      tzOffsetStr[2] = tzOffsetStr[0];
-      tzOffsetStr[1] = '0';
-      tzOffsetStr[0] = '+';
-    }
-    // change "20" to "+20"
-    if (tzOffsetInt > 10) {
-      tzOffsetStr[3] = '\0';
-      tzOffsetStr[2] = tzOffsetStr[1];
-      tzOffsetStr[1] = tzOffsetStr[0];
-      tzOffsetStr[0] = '+';
-    }
-
-    EEPROM.put(TIMEZONE_CHAR_4, tzOffsetStr);
-  
-    // set the clock to the right time using the offset.  Don't worry, tempTimeStr is not being used to sync time, it's just being overwritten here
-    if (fona.enableNTPTimeSync(tzOffsetStr, tempTimeStr, 22))
-      updateLastResetTime();
-
-    getTime(tempTimeStr);
-    strcat(message, tempTimeStr);
-  }
-  // just get current time and add "Try..."
-  else {
-    getTime(tempTimeStr);
-    strcat(message, tempTimeStr);
-    strcat_P(message, PSTR("\\\\nTry 'time set' plus:\\\\n(the current hour of the day 0-23)"));
-  }
-
-  sendSMS(smsSender, message);
-  // always return true
-  return true;
-}
-
 bool handleBothReq(char* smsSender, char* smsValue) {
   return handleKillSwitchReq(smsSender, smsValue, true) && handleGeofenceReq(smsSender, smsValue, true);
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[69] = {0};
+  char message[69];
 
   bool validMessage = false;
   bool killSwitchEnabled;
@@ -1202,7 +1099,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 }
 
 bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[139] = {0};
+  char message[139];
 
   bool validMessage = false;
   bool geofenceEnabled;
@@ -1270,7 +1167,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 300 (300 feet)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
     }
   }
 }
@@ -1333,7 +1230,7 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\ntime"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner"));
 }
 
 void handleATCommandReq(char* smsSender, char* smsValue) {
