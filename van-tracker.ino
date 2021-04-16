@@ -301,21 +301,40 @@ void watchDogForReset() {
   }
 }
 
-bool isClockValid() {
+int8_t isClockValid() {
   // When the SIM7000 is powered on, the Real Time Clock says 1980-01-01.
   // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
-  // So, this function returns true iff the year < 80.
-  int8_t yearIndex = getTimePartInt(YEAR_INDEX);
-  return (yearIndex < 80 && yearIndex > 1);
+
+  int8_t year = getTimePartInt(YEAR_INDEX);
+  if (year > 79) return 2;  // default year is 1980.  This is very bad, clock is unusable
+  if (year < 20) return 1;  // when we set the year based on gps time we set it to 2011 (hour is correct).  Clock is decent, but the actual time would be better.
+  return 0;                 // clock is correct based on network time
+}
+
+void updateTimezone() {
+  // timeStr INCLUDES QUOTES and looks like "21/04/08,00:45:16-20"
+  char timeStr[23];
+  char tzStr[4];
+
+  getTime(timeStr);
+  timeStr[21] = '\0';
+  EEPROM.get(TIMEZONE_CHAR_4, tzStr);
+
+  // 0 means strings are equivalent
+  if (strcmp(tzStr, &timeStr[18])) {
+    strcpy(tzStr, &timeStr[18]);    // You have to do this so the EEPROM.put() will work.  See https://forum.arduino.cc/t/passing-in-a-char-then-using-eeprom-put-fails/653670
+    EEPROM.put(TIMEZONE_CHAR_4, tzStr);
+  }
 }
 
 void updateClock() {
   // When the SIM7000 is powered on, the real time clock says 1980-01-01.
   // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out.
-  // Only call this function on SIM7000 startup, not on reset.
   
   // If cellular network gives us the time, we're good...
-  if (isClockValid()) {
+  if (isClockValid() == 0) {
+    // Good news is TZ will be updated automatically, so the "time" command is deprecated.
+    updateTimezone();
     return;
   }
 
@@ -325,9 +344,10 @@ void updateClock() {
 
   // tzOffsetStr == "-48".."+00".."+48"
   EEPROM.get(TIMEZONE_CHAR_4, tzOffsetStr);
-  fona.enableNTPTimeSync(true, tzOffsetStr, dummyString, 1);
+  fona.enableNTPTimeSync(tzOffsetStr, dummyString, 1);
 
-  if (isClockValid()) {
+  // either we're == 0 due to NTP time or we're == 1 from the GPS. Either way, no reason to re-do using GPS time, let's just return
+  if (isClockValid() < 2) {
     return;
   }
 
@@ -343,13 +363,16 @@ void updateClock() {
   // convert gpsTimeStr
   //    YYYYMMDDhhmmss.xxx
   // to simComTimeStr
-  //    "yy/MM/dd,hh:mm:ss±zz"
+  //    INCLUDING QUOTES "yy/MM/dd,hh:mm:ss±zz"
   // example
-  //    "21/12/31,10:11:12-22"
-  char gpsTimeStr[19];
+  //    INCLUDING QUOTES "21/12/31,10:11:12-22"
+  char gpsTimeStr[19] = {0};
   if (getGPSTime(gpsTimeStr)) {
 
-    char simComTimeStr[23] = "\"21/01/01,";   // we don't care about the date, just the time
+    // We don't care about the date, just the time
+    // Put in 2011 because it signifies this clock is "kinda" valid, so next reset it'll hopefully update using NTP
+    char simComTimeStr[23];
+    strcpy_P(simComTimeStr, PSTR("\"11/11/11,"));
 
     int8_t gpsHourInt = getTimePartInt(8, gpsTimeStr);
     int8_t tzOffsetInt = atoi(tzOffsetStr) / 4;  // change -48..48 to -12..12
@@ -391,7 +414,7 @@ void updateClock() {
 
   // Very edgy case - SimCom won't respond to AT+CPMS? to get SMS messages, but GPS stuff WILL work.
   // Don't worry, we'll reset SimCom in about 30 min
-  if (g_SimComConnectionStatus == 1 && isClockValid()) {
+  if (g_SimComConnectionStatus == 1 && isClockValid() < 2) {
     // set connection to "bad"
     g_SimComConnectionStatus = 2;
   }
@@ -1064,7 +1087,7 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
     int8_t tzOffsetInt;
 
     // get current UTC time into tempTimeStr
-    fona.enableNTPTimeSync(true, tzOffsetStr, tempTimeStr, 22);
+    fona.enableNTPTimeSync(tzOffsetStr, tempTimeStr, 22);
 
     // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
     int8_t utcHourInt = getTimePartInt(12, tempTimeStr);
@@ -1112,7 +1135,7 @@ bool handleTimeReq(char* smsSender, char* smsValue) {
     EEPROM.put(TIMEZONE_CHAR_4, tzOffsetStr);
   
     // set the clock to the right time using the offset.  Don't worry, tempTimeStr is not being used to sync time, it's just being overwritten here
-    if (fona.enableNTPTimeSync(true, tzOffsetStr, tempTimeStr, 22))
+    if (fona.enableNTPTimeSync(tzOffsetStr, tempTimeStr, 22))
       updateLastResetTime();
 
     getTime(tempTimeStr);
@@ -1759,7 +1782,8 @@ bool isActive(int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd) {
   if (strcmp(startHour, endHour) == 0)
     return true;
 
-  if (!isClockValid())
+  // 2 = clock is not valid
+  if (isClockValid() == 2)
     return false;
 
   short currentHour = getTimePartInt(HOUR_INDEX);
