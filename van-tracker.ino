@@ -426,7 +426,7 @@ void updateLastResetTime() {
 
 void resetSystem() {
   debugBlink(0,3);
-  setSimComFuntionality(true);
+  setSimComFunctionality(true);
 
   setupSimCom();
   waitUntilNetworkConnected(120);
@@ -1931,12 +1931,14 @@ void writeCStringToEEPROM(int16_t eepromAddress, char* data) {
   EEPROM.put(eepromAddress+i, '\0');
 }
 
-void setSimComFuntionality(bool onOff) {
+void setSimComFunctionality(bool onOff) {
   if (onOff) {
     sendRawCommand(F("AT+CFUN=1,1"));
+    delay(20000);
   } else {
     setGPS(false);
     sendRawCommand(F("AT+CFUN=0,0"));
+    delay(20000);
   }
 }
 
@@ -2167,7 +2169,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     return;
   }
 
-  debugPrint(F("Network"));
+  debugPrintln(F("Network"));
   int8_t netConn;
 
   fona.setEchoOff();
@@ -2198,8 +2200,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
       debugPrintln(F("\nSucc"));
       g_SimComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
-      fona.TCPshut();                     // just in case GPRS is still on for some reason, save power - SIM7000
-      sendRawCommand(F("AT+NETCLOSE"));   // just in case GPRS is still on for some reason, save power - SIM7500
+      fona.TCPshut();
       return;
     }
     delay(2000);
@@ -2210,7 +2211,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     netConn = 2;
 
   g_SimComConnectionStatus = netConn;
-  setSimComFuntionality(false);
+  setSimComFunctionality(false);
 }
 
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
