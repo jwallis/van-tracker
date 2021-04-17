@@ -425,6 +425,7 @@ void updateLastResetTime() {
 }
 
 void resetSystem() {
+  debugPrintln("resetSystem()");
   debugBlink(0,3);
   setSimComFunctionality(true);
 
@@ -1099,7 +1100,8 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 }
 
 bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[139];
+  char message[139] = {0};
+  strcpy_P(message, PSTR("Fence: Enabled\\\\nHours: "));
 
   bool validMessage = false;
   bool geofenceEnabled;
@@ -2360,6 +2362,7 @@ void putEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "0.0");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "0.0");
+  EEPROM.put(TIMEZONE_CHAR_4, "-12");
 }
 
 void getEEPROM() {
@@ -2425,61 +2428,53 @@ void checkSerialInput() {
     return;
   }
 
-  String command;
-  command = Serial.readString();
+  char command[120];
+
+  int16_t i = 0;
+  for (; Serial.available(); i++) {
+    command[i] = Serial.read();
+  }
+  command[i-1] = '\0';
+
   debugPrintln(command);
   handleSerialInput(command);
 }
 
-void handleSerialInput(String command) {
+void handleSerialInput(char* temp) {
 
-  command.trim();
-  char* temp = command.c_str();
+  if (strcmp_P(temp, PSTR("t")) == 0) {
+    char gpsTimeStr[19];
+    getGPSTime(gpsTimeStr);
+  }
 
-  if (strcmp_P(temp, PSTR("g")) == 0) {
+  if (temp[0] == 'g') {
     getEEPROM();
   }
-  if (strcmp_P(temp, PSTR("p")) == 0) {
+  if (temp[0] == 'p') {
     putEEPROM();
   }
-  if (strcmp_P(temp, PSTR("e")) == 0) {
+  if (temp[0] == 'e') {
     resetSystem();
   }
-  if (strcmp_P(temp, PSTR("d")) == 0) {
+  if (temp[0] == 'd') {
     fona.deleteAllSMS();
   }
-  if (strcmp_P(temp, PSTR("m")) == 0) {
+  if (temp[0] == 'm') {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     char message[7]="ip msg";
     sendSMS(ownerPhoneNumber, message);
   }
-  if (strcmp_P(temp, PSTR("n")) == 0) {
+  if (temp[0] == 'n') {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     char message[10]="plain msg";
     fona.sendSMS(ownerPhoneNumber, message);
   }
 
-  
-
-
-  
-
-// for SERIAL TUBE:
-
-// AT+CGNSPWR=1 - turn on gps
-// AT+CGPSSTATUS? - get gps status
-// AT+CGNSINF - get loc
-// AT+CBC - battery
-// AT+CMGF=1 - set text SMS mode
-// AT+CPMS? - get number of SMSs
-// AT&V - get profiles
-// AT+CCLK? - get clock
-// AT+CPOWD=1 - power down module
-
-  // Allow user to directly enter serial commands to the SimCom chip
-  if (strcmp_P(temp, PSTR("S")) == 0) {
+  //////////////////////////////////////////////////////////////////////////////
+  // Allow user to directly enter AT commands to the SimCom chip
+  if (temp[0] == 'S') {
     sendRawCommand(F("AT+CMEE=2"));
     sendRawCommand(F("ATE1"));
     
@@ -2496,8 +2491,8 @@ void handleSerialInput(String command) {
     }
   }
   // Test incoming SMS, for example:
-  // 5554443333_fence status
-  if (command.length() > 2){
+  // 15554443333_fence status
+  if (strlen(temp) > 4){
     char smsSender[15];
     char smsValue[51];
     getOccurrenceInDelimitedString(temp, smsSender, 1, '_');
