@@ -2147,11 +2147,11 @@ void setKillSwitchPins(bool tf) {
 }
 
 void setupSimCom() {
-  debugPrint(F("SimCom"));
+  debugPrintln(F("SimCom"));
   // let SimCom module start up before we try to connect
   SimComSerial->begin(9600);
 
-  for (int8_t i = 0; i < 3; i++) {
+  for (int8_t i = 0; i < 6; i++) {
     fona.begin(*SimComSerial);
 
     if (fona.getNumSMS() >= 0) {
