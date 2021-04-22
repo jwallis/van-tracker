@@ -226,7 +226,7 @@ void loop() {
     watchDogForTurnOffGPS();
     watchDogForReset();
   }
-  // 1 is very bad - could not connect to SIM7000
+  // 1 is very bad - could not connect to SimCom module
   if (g_SimComConnectionStatus == 1) {
 
     // if kill switch is always on, turn on, otherwise this won't do anything
@@ -286,7 +286,7 @@ void watchDogForReset() {
     if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 120) {
       resetSystem();
     }
-    if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1320) {
+    else if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1320) {
       resetSystem();
     }
   } // > 0 is not connected
@@ -295,15 +295,15 @@ void watchDogForReset() {
     if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 30) {
       resetSystem();
     }
-    if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1410) {
+    else if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1410) {
       resetSystem();
     }
   }
 }
 
 int8_t isClockValid() {
-  // When the SIM7000 is powered on, the Real Time Clock says 1980-01-01.
-  // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
+  // When the SimCom module is powered on, the Real Time Clock says 1980-01-01.
+  // When AT+CFUN=1,1 command is send to SimCom module, Clock is NOT wiped out, which is nice.
 
   int8_t year = getTimePartInt(YEAR_INDEX);
   if (year > 79) return 2;  // default year is 1980.  This is very bad, clock is unusable
@@ -328,8 +328,8 @@ void updateTimezone() {
 }
 
 void updateClock() {
-  // When the SIM7000 is powered on, the real time clock says 1980-01-01.
-  // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out.
+  // When the SimCom module is powered on, the real time clock says 1980-01-01.
+  // When AT+CFUN=1,1 command is send to SimCom module, Clock is NOT wiped out.
   
   // If cellular network gives us the time, we're good...
   if (isClockValid() == 0) {
@@ -1101,7 +1101,6 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 
 bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
   char message[139] = {0};
-  strcpy_P(message, PSTR("Fence: Enabled\\\\nHours: "));
 
   bool validMessage = false;
   bool geofenceEnabled;
@@ -1141,9 +1140,9 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (geofenceEnabled)
-      strcat_P(message, PSTR("Fence: Enabled\\\\nHours: "));
+      strcpy_P(message, PSTR("Fence: Enabled\\\\nHours: "));
     else
-      strcat_P(message, PSTR("Fence: Disabled\\\\nHours: "));
+      strcpy_P(message, PSTR("Fence: Disabled\\\\nHours: "));
 
     strcat(message, geofenceStart);
     strcat_P(message, PSTR("-"));
@@ -1331,11 +1330,15 @@ bool setGPS(bool tf) {
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
       // We have to sendRaw() because if we call getGPS we're calling the function that called this function.
-      sendRawCommand(F("AT+CGNSINF"));    // SIM7000
-      sendRawCommand(F("AT+CGNSSINFO"));  // SIM7500
-      delay(3000);
-      sendRawCommand(F("AT+CGNSINF"));    // SIM7000
-      sendRawCommand(F("AT+CGNSSINFO"));  // SIM7500
+      if (fona.type() == SIM7000) {
+        sendRawCommand(F("AT+CGNSINF"));
+        delay(3000);
+        sendRawCommand(F("AT+CGNSINF"));
+      } else {
+        sendRawCommand(F("AT+CGNSSINFO"));
+        delay(3000);
+        sendRawCommand(F("AT+CGNSSINFO"));
+      }
       g_lastGPSConnAttemptWorked = true;
       return true;
     }
@@ -1424,8 +1427,8 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     }
   }
 
-  // I've seen where setGPS(true) above worked, but then then fona.getGPSSIM7000() failed a few times in a row, but each
-  // time I saw this, fona.getGPSSIM7000() began working consistently afterwards, so do NOT do either of the following:
+  // I've seen where setGPS(true) above worked, but then then fona.getGPS() failed a few times in a row, but each
+  // time I saw this, fona.getGPS() began working consistently afterwards, so do NOT do either of the following:
   //      g_lastGPSConnAttemptWorked = false;
   //      setGPS(false);
 
@@ -1491,7 +1494,7 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //
 //  // full GPS string:
 //  // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-//  fona.getGPSSIM7000(0, gpsString, 120);
+//  fona.getGPS(0, gpsString, 120);
 //  getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
 //
 //  // if GPS is already working OR we turn it on successfully
@@ -1514,12 +1517,12 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //        return true;
 //      }
 //      else
-//        fona.getGPSSIM7000(0, gpsString, 120);
+//        fona.getGPS(0, gpsString, 120);
 //    }
 //  }
 //
-//  // I've seen where setGPS(true) above worked, but then then fona.getGPSSIM7000() failed a few times in a row, but each
-//  // time I saw this, fona.getGPSSIM7000() began working consistently afterwards, so do NOT do either of the following:
+//  // I've seen where setGPS(true) above worked, but then then fona.getGPS() failed a few times in a row, but each
+//  // time I saw this, fona.getGPS() began working consistently afterwards, so do NOT do either of the following:
 //  //      g_lastGPSConnAttemptWorked = false;
 //  //      setGPS(false);
 //  latitude[0] = '\0';
@@ -1617,7 +1620,7 @@ void getTime(char* currentTimeStr) {
     if (currentTimeStr[0] == '"' && strlen(currentTimeStr) == 22)
       return;
 
-    // else, try simple self-healing.  If echo is on, basically all commands to SIM7000 won't work.
+    // else, try simple self-healing.  If echo is on, basically all commands to SimCom module won't work.
     fona.setEchoOff();
     delay(1000);
   }
@@ -1709,8 +1712,8 @@ void checkForDeadMessages() {
     return;
   }
 
-  // sim7000 can only hold 10 messages, it cannot see the rest until those 10 are processed.  That means if we are debugging
-  // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
+  // SIM card can only hold 10 messages, it cannot see the rest until those 10 are processed.  That means if we are debugging
+  // and send "deleteallmessages" and there are already 10 queue'd up, SimCom module will never see the "deleteallmessages" message.
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
   // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
   int8_t numberOfSMSs = fona.getNumSMS();
@@ -2180,7 +2183,12 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
-  for (int16_t i = 0; i < secondsToWait; i++) {
+  for (int16_t i = secondsToWait; i > 0; i--) {
+    // About to run out of time... last ditch effort...
+    // set Cellular OPerator Selection to "automatic"
+    if (i < 5)
+      fona.setNetworkOperator(F("AT&T"));
+
     fona.setEchoOff();
     netConn = fona.getNetworkStatus();
 
@@ -2240,8 +2248,10 @@ void initBaud() {
       return;
     } else {
       debugPrintln(F("Connected at 115200, setting to 9600..."));
-      sendRawCommand(F("AT+IPR=9600"));   // SIM7000
-      sendRawCommand(F("AT+IPREX=9600")); // SIM7500
+      if (fona.type() == SIM7000)
+        sendRawCommand(F("AT+IPR=9600"));
+      else
+        sendRawCommand(F("AT+IPREX=9600"));
       SimComSerial->begin(9600);
     }
   } else {
@@ -2290,14 +2300,18 @@ void initSimCom() {
   // used on brand-new SimCom module
   debugPrintln(F("Begin initSimCom()"));
 
-  sendRawCommand(F("ATZ"));                 // Reset settings
-  sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600 (sim7000)
-  sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600 (sim7500)
-  sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
-  sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
-  sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
-  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));           // Set Cellular OPerator Selection to "automatic"
-  sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
+  sendRawCommand(F("ATZ"));                   // Reset settings
+
+  sendRawCommand(F("AT+CMEE=2"));             // Turn on verbose mode
+  if (fona.type() == SIM7000) {
+    sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600
+    sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
+    sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
+  } else {
+    sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600
+  }
+  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));  // Set Cellular OPerator Selection to "automatic"
+  sendRawCommand(F("AT+CMEE=0"));             // Turn off verbose mode
 
   sendRawCommand(F("AT&W"));                // save writeable settings
 
