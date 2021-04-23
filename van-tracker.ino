@@ -62,6 +62,8 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //#define SIMCOM_SERIAL      // Only for interacting with SimCom module using AT commands
 //#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
 
+#define DOOR_OPTION          // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
+
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -470,7 +472,11 @@ void watchDogForKillSwitch() {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
+#ifdef DOOR_OPTION
+    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened while door alert active"));
+#else
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted while kill switch active"));
+#endif
     g_volatileStartAttemptedWhileKillSwitchActive = false;
   }
 }
@@ -669,7 +675,11 @@ void checkSMSInput() {
     } 
 
     // "contains" match
+#ifdef DOOR_OPTION
+    if (strstr_P(smsValue, PSTR("door"))) {
+#else
     if (strstr_P(smsValue, PSTR("kill"))) {
+#endif
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -784,7 +794,11 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     
+#ifdef DOOR_OPTION
+    strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or door\\\\nRadius: "));
+#else
     strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or kill\\\\nRadius: "));
+#endif
     strcat(message, geofenceRadius);
     strcat_P(message, STR_HOME);
     strcat(message, geofenceHomeLat);
@@ -981,7 +995,11 @@ bool handleStatusReq(char* smsSender) {
       strcat_P(message, PSTR("\\\\nFence: Disabled"));
   
     if (kill) {
+#ifdef DOOR_OPTION
+      strcat_P(message, PSTR("\\\\nDoor: Enabled "));
+#else
       strcat_P(message, PSTR("\\\\nKill: Enabled "));
+#endif
 
       EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
       strcat(message, hour);
@@ -990,7 +1008,11 @@ bool handleStatusReq(char* smsSender) {
       strcat(message, hour);
     }
     else
+#ifdef DOOR_OPTION
+      strcat_P(message, PSTR("\\\\nDoor: Disabled"));
+#else
       strcat_P(message, PSTR("\\\\nKill: Disabled"));
+#endif
   }
 
   strcat_P(message, PSTR("\\\\nRSSI: "));
@@ -1068,10 +1090,17 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
   validMessage = setEnableAndHours(smsValue, KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3, killSwitchEnabled, killSwitchStart, killSwitchEnd);
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
+#ifdef DOOR_OPTION
+    if (killSwitchEnabled)
+      strcpy_P(message, PSTR("Door: Enabled\\\\nHours: "));
+    else
+      strcpy_P(message, PSTR("Door: Disabled\\\\nHours: "));
+#else
     if (killSwitchEnabled)
       strcpy_P(message, PSTR("Kill: Enabled\\\\nHours: "));
     else
       strcpy_P(message, PSTR("Kill: Disabled\\\\nHours: "));
+#endif
 
     strcat(message, killSwitchStart);
     strcat_P(message, PSTR("-"));
@@ -1092,7 +1121,11 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
       strcat_P(message, PSTR("both"));
     }
     else {
+#ifdef DOOR_OPTION
+      strcat_P(message, PSTR("door"));
+#else
       strcat_P(message, PSTR("kill"));
+#endif
     }
     strcat_P(message, PSTR("' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)"));
     return sendSMS(smsSender, message);
@@ -1231,7 +1264,11 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
+#ifdef DOOR_OPTION
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner"));
+#else
   return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner"));
+#endif
 }
 
 void handleATCommandReq(char* smsSender, char* smsValue) {
