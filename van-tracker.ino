@@ -62,7 +62,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //#define SIMCOM_SERIAL      // Only for interacting with SimCom module using AT commands
 //#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
 
-#define DOOR_OPTION          // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
+//#define DOOR_OPTION        // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
