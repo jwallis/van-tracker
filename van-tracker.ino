@@ -522,7 +522,7 @@ void watchDogForGeofence() {
   char currentLat[12];
   char currentLon[12];
   char currentSpeed[4];
-  char currentDir[3];
+  char currentDir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   if (watchDogForFollow(currentLat, currentLon, currentSpeed, currentDir))
     return;
@@ -1030,7 +1030,7 @@ bool handleLocReq(char* smsSender) {
   char latitude[12];
   char longitude[12];
   char speed[4];
-  char dir[3];
+  char dir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   if (getGPSLatLonSpeedDir(latitude, longitude, speed, dir)) {
     strcpy_P(message, PSTR("google.com/search?q="));
