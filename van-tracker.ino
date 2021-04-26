@@ -52,10 +52,13 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //    SET NETWORK & HARDWARE OPTIONS
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
 #define APN               F("hologram")
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
+
+
+
+#define VT_VERSION        F("VT 2.0")
 
 //#define VAN_PROD
 #define VAN_TEST           // Includes debug output to Serial Monitor
@@ -208,7 +211,7 @@ void setup() {
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
   EEPROM.get(POWERON_BOOL_1, powerOn);
   if (powerOn)
-    sendSMS(ownerPhoneNumber, F("Power on"));
+    sendSMS(ownerPhoneNumber, VT_VERSION);
 }
 
 void loop() {
@@ -427,7 +430,7 @@ void updateLastResetTime() {
 }
 
 void resetSystem() {
-  debugPrintln("resetSystem()");
+  debugPrintln(F("reset"));
   debugBlink(0,3);
   setSimComFunctionality(true);
 
@@ -766,7 +769,7 @@ void checkSMSInput() {
 
     // exact match first character
     if (smsValue[0] == '~') {
-      // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
+      // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
       fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
       handleATCommandReq(smsSender, &smsValue[1]);
       deleteSMS(smsSlotNumber);
@@ -1265,9 +1268,9 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 
 bool handleCommandsReq(char* smsSender) {
 #ifdef DOOR_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #endif
 }
 
@@ -1279,7 +1282,7 @@ void handleATCommandReq(char* smsSender, char* smsValue) {
   //    ~at+cops=4,2,310410   // AT&T
   //    ~at+cops=4,2,310260   // T-Mobile
   
-  // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
+  // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
   char response[141];
   fona.executeATCommand(smsValue, response, 140);
   removeNonAlphaNumChars(response);
@@ -2347,7 +2350,8 @@ void initSimCom() {
   } else {
     sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600
   }
-  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));  // Set Cellular OPerator Selection to "automatic"
+  fona.setNetworkOperator(F("AT&T"));         // Set Cellular OPerator Selection to "automatic"
+  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));  // ...this is really important, so I'm doubling up.
   sendRawCommand(F("AT+CMEE=0"));             // Turn off verbose mode
 
   sendRawCommand(F("AT&W"));                // save writeable settings
