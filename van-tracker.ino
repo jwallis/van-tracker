@@ -643,7 +643,7 @@ void checkSMSInput() {
     fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
     toLower(smsValue);
 
-    debugPrintln(F("SMS:"));
+    debugPrint(F("IN : "));
     debugPrintln(smsValue);
 
     // exact match
@@ -1051,11 +1051,11 @@ bool handleLocReq(char* smsSender) {
 bool handleUseSMSReq(char* smsSender, char* smsValue) {
   if (strcmp_P(smsValue, PSTR("usesmsplain")) == 0) {
     EEPROM.put(USEPLAINSMS_BOOL_1, true);
-    sendSMS(smsSender, F("Plain SMS"));
+    sendSMS(smsSender, F("Plain"));
   }
   if (strcmp_P(smsValue, PSTR("usesmsoverip")) == 0) {
     EEPROM.put(USEPLAINSMS_BOOL_1, false);
-    sendSMS(smsSender, F("SMS over IP"));
+    sendSMS(smsSender, F("IP"));
   }
 }
 
@@ -1867,7 +1867,8 @@ bool sendSMS(char* send_to, char* message) {
   strcat(hologramSMSString, "\\\"}\",\"t\":\"TWIL\"}");
   hologramSMSStringLength = strlen(hologramSMSString);
   
-  debugPrint(F("SMS: "));
+  debugPrint(F("OUT: "));
+  debugPrintln(message);
   debugPrintln(hologramSMSString);
 
   int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
