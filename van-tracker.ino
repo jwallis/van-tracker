@@ -1278,8 +1278,10 @@ void handleATCommandReq(char* smsSender, char* smsValue) {
   // This is for executing arbitrary AT commands.
   // if there are " chars, you have to escape them. Example messages:
   //    ~at+cgdcont=1,\"IP\",\"hologram\"
-  //    ~at+cops=4,1,\"AT&T\"
-  //    ~at+cops=4,2,310410   // AT&T
+  //    ~at+cops=1,1,\"AT&T\" // AT&T - manual/force connect
+  //    ~at+cops=1,2,310410   // AT&T - manual/force connect
+  //    ~at+cops=4,1,\"AT&T\" // AT&T - automatic connect
+  //    ~at+cops=4,2,310410   // AT&T - automatic connect
   //    ~at+cops=4,2,310260   // T-Mobile
   
   // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
