@@ -1283,6 +1283,28 @@ void handleATCommandReq(char* smsSender, char* smsValue) {
   //    ~at+cops=4,1,\"AT&T\" // AT&T - automatic connect
   //    ~at+cops=4,2,310410   // AT&T - automatic connect
   //    ~at+cops=4,2,310260   // T-Mobile
+  //
+  // Response:
+  //    <mode>[,<format>,<operator>[,< AcT>]]
+  //    <mode>
+  //      0 – automatic
+  //      1 – manual
+  //      2 – force deregister
+  //      3 – set only <format>
+  //      4 – manual/automatic
+  //      5 – manual,but do not modify the network selection mode(e.g GSM,WCDMA) after module resets.
+  //    <format>
+  //      0 – long format alphanumeric <oper>
+  //      1 – short format alphanumeric <oper>
+  //      2 – numeric <oper>
+  //    <operator>
+  //      "AT&T", etc.
+  //    <AcT> Access technology selected
+  //      0 – GSM
+  //      1 – GSM Compact
+  //      2 – UTRAN
+  //      7 – EUTRAN
+  //      8 – CDMA/HDR
   
   // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
   char response[141];
