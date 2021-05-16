@@ -2401,32 +2401,32 @@ void initSimCom() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void debugPrint(char* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
   Serial.print(str);
 #endif
 }
 void debugPrint(const __FlashStringHelper* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
   Serial.print(str);
 #endif
 }
 void debugPrintln(char* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
   Serial.println(str);
 #endif
 }
 void debugPrintln(const __FlashStringHelper* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
   Serial.println(str);
 #endif
 }
 void debugPrintln(String s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
   Serial.println(s);
 #endif
 }
 void debugPrintln(uint8_t s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
   Serial.println(s);
 #endif
 }
