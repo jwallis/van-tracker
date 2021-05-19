@@ -640,6 +640,13 @@ void checkSMSInput() {
       continue;
     }
 
+    // exact match
+    if (strcmp_P(smsValue, PSTR("location")) == 0) {
+      if (handleLocReq(smsSender))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     // "contains" match
     if (strstr_P(smsValue, PSTR("both"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
@@ -1253,7 +1260,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 100 (100 meters)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current location)\\\\nradius 100 (100 meters)"));
     }
   }
 }
@@ -1316,7 +1323,7 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\ntime"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nlocation\\\\nfollow\\\\nowner\\\\ntime"));
 }
 
 void handleATCommandReq(char* smsSender, char* smsValue) {
@@ -2466,7 +2473,7 @@ void handleSerialInput(String command) {
 
 // AT+CGNSPWR=1 - turn on gps
 // AT+CGPSSTATUS? - get gps status
-// AT+CGNSINF - get loc
+// AT+CGNSINF - get location
 // AT+CBC - battery
 // AT+CMGF=1 - set text SMS mode
 // AT+CPMS? - get number of SMSs
@@ -2512,6 +2519,11 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   debugPrintln(smsValue);
 
   if (strstr_P(smsValue, PSTR("loc"))) {
+    handleLocReq(smsSender);
+    return;
+  }
+
+  if (strstr_P(smsValue, PSTR("location"))) {
     handleLocReq(smsSender);
     return;
   }
