@@ -52,21 +52,15 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //    SET NETWORK & HARDWARE OPTIONS
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
 #define APN               F("hologram")
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
-
-
-
-#define VT_VERSION        F("VT 2.0")
 
 //#define VAN_PROD
 #define VAN_TEST           // Includes debug output to Serial Monitor
 //#define SIMCOM_SERIAL      // Only for interacting with SimCom module using AT commands
 //#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
-
-//#define DOOR_OPTION        // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
-
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -124,7 +118,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define USEPLAINSMS_BOOL_1                132
 #define POWERON_BOOL_1                    133
 
-const char STR_HOME[] PROGMEM = " feet\\\\nHome: google.com/search?q=";
+const char STR_HOME[] PROGMEM = " meters\\\\nHome: maps.google.com/?ll=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
 
 // g_SimComConnectionStatus status meanings
@@ -211,7 +205,7 @@ void setup() {
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
   EEPROM.get(POWERON_BOOL_1, powerOn);
   if (powerOn)
-    sendSMS(ownerPhoneNumber, VT_VERSION);
+    sendSMS(ownerPhoneNumber, F("Power on"));
 }
 
 void loop() {
@@ -231,7 +225,7 @@ void loop() {
     watchDogForTurnOffGPS();
     watchDogForReset();
   }
-  // 1 is very bad - could not connect to SimCom module
+  // 1 is very bad - could not connect to SIM7000
   if (g_SimComConnectionStatus == 1) {
 
     // if kill switch is always on, turn on, otherwise this won't do anything
@@ -291,7 +285,7 @@ void watchDogForReset() {
     if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 120) {
       resetSystem();
     }
-    else if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1320) {
+    if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1320) {
       resetSystem();
     }
   } // > 0 is not connected
@@ -300,46 +294,27 @@ void watchDogForReset() {
     if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 30) {
       resetSystem();
     }
-    else if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1410) {
+    if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1410) {
       resetSystem();
     }
   }
 }
 
-int8_t isClockValid() {
-  // When the SimCom module is powered on, the Real Time Clock says 1980-01-01.
-  // When AT+CFUN=1,1 command is send to SimCom module, Clock is NOT wiped out, which is nice.
-
-  int8_t year = getTimePartInt(YEAR_INDEX);
-  if (year > 79) return 2;  // default year is 1980.  This is very bad, clock is unusable
-  if (year < 20) return 1;  // when we set the year based on gps time we set it to 2011 (hour is correct).  Clock is decent, but the actual time would be better.
-  return 0;                 // clock is correct based on network time
-}
-
-void updateTimezone() {
-  // timeStr INCLUDES QUOTES and looks like "21/04/08,00:45:16-20"
-  char timeStr[23];
-  char tzStr[4];
-
-  getTime(timeStr);
-  timeStr[21] = '\0';
-  EEPROM.get(TIMEZONE_CHAR_4, tzStr);
-
-  // 0 means strings are equivalent
-  if (strcmp(tzStr, &timeStr[18])) {
-    strcpy(tzStr, &timeStr[18]);    // You have to do this so the EEPROM.put() will work.  See https://forum.arduino.cc/t/passing-in-a-char-then-using-eeprom-put-fails/653670
-    EEPROM.put(TIMEZONE_CHAR_4, tzStr);
-  }
+bool isClockValid() {
+  // When the SIM7000 is powered on, the Real Time Clock says 1980-01-01.
+  // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out, which is nice.
+  // So, this function returns true iff the year < 80.
+  int8_t yearIndex = getTimePartInt(YEAR_INDEX);
+  return (yearIndex < 80 && yearIndex > 19);
 }
 
 void updateClock() {
-  // When the SimCom module is powered on, the real time clock says 1980-01-01.
-  // When AT+CFUN=1,1 command is send to SimCom module, Clock is NOT wiped out.
+  // When the SIM7000 is powered on, the real time clock says 1980-01-01.
+  // When AT+CFUN=1,1 command is send to SIM7000, Clock is NOT wiped out.
+  // Only call this function on SIM7000 startup, not on reset.
   
   // If cellular network gives us the time, we're good...
-  if (isClockValid() == 0) {
-    // Good news is TZ will be updated automatically, so the "time" command is deprecated.
-    updateTimezone();
+  if (isClockValid()) {
     return;
   }
 
@@ -349,14 +324,13 @@ void updateClock() {
 
   // tzOffsetStr == "-48".."+00".."+48"
   EEPROM.get(TIMEZONE_CHAR_4, tzOffsetStr);
-  fona.enableNTPTimeSync(tzOffsetStr, dummyString, 1);
+  fona.enableNTPTimeSync(true, tzOffsetStr, dummyString, 1);
 
-  // either we're == 0 due to NTP time or we're == 1 from the GPS. Either way, no reason to re-do using GPS time, let's just return
-  if (isClockValid() < 2) {
+  if (isClockValid()) {
     return;
   }
 
-  // If not, we resort to GPS and the timezone from EEPROM
+  // If not, we resort to GPS and the timezone the user has given us
 
   // From SIM7000 AT command reference:
   //   String type(string should be included in quotation marks) value
@@ -365,19 +339,24 @@ void updateClock() {
   //   in quarters of an hour, between the local time and GMT; range -47...+48). 
   //   E.g. 6th of May 2010, 00:01:52 GMT+2 hours equals to "10/05/06,00:01:52+08".
 
-  // convert gpsTimeStr
-  //    YYYYMMDDhhmmss.xxx
-  // to simComTimeStr
-  //    INCLUDING QUOTES "yy/MM/dd,hh:mm:ss±zz"
-  // example
-  //    INCLUDING QUOTES "21/12/31,10:11:12-22"
-  char gpsTimeStr[19] = {0};
+  // convert
+  // YYYYMMDDhhmmss.xxx
+  // into
+  // AT+CCLK="yy/MM/dd,hh:mm:ss±zz"
+  // AT+CCLK="20/05/01,10:11:12-22"
+  char gpsTimeStr[19];
   if (getGPSTime(gpsTimeStr)) {
 
-    // We don't care about the date, just the time
-    // Put in 2011 because it signifies this clock is "kinda" valid, so next reset it'll hopefully update using NTP
-    char simComTimeStr[23];
-    strcpy_P(simComTimeStr, PSTR("\"11/11/11,"));
+    char simComTimeStr[23] = "\"";
+    simComTimeStr[1] = gpsTimeStr[2];
+    simComTimeStr[2] = gpsTimeStr[3];
+    simComTimeStr[3] = '/';
+    simComTimeStr[4] = gpsTimeStr[4];
+    simComTimeStr[5] = gpsTimeStr[5];
+    simComTimeStr[6] = '/';
+    simComTimeStr[7] = gpsTimeStr[6];
+    simComTimeStr[8] = gpsTimeStr[7];
+    simComTimeStr[9] = ',';
 
     int8_t gpsHourInt = getTimePartInt(8, gpsTimeStr);
     int8_t tzOffsetInt = atoi(tzOffsetStr) / 4;  // change -48..48 to -12..12
@@ -419,7 +398,7 @@ void updateClock() {
 
   // Very edgy case - SimCom won't respond to AT+CPMS? to get SMS messages, but GPS stuff WILL work.
   // Don't worry, we'll reset SimCom in about 30 min
-  if (g_SimComConnectionStatus == 1 && isClockValid() < 2) {
+  if (g_SimComConnectionStatus == 1 && isClockValid()) {
     // set connection to "bad"
     g_SimComConnectionStatus = 2;
   }
@@ -430,10 +409,8 @@ void updateLastResetTime() {
 }
 
 void resetSystem() {
-  debugPrintln(F("reset"));
   debugBlink(0,3);
-  setSimComFunctionality(true);
-
+  setSimComFuntionality(true);
   setupSimCom();
   waitUntilNetworkConnected(120);
   updateClock();
@@ -446,7 +423,7 @@ void watchDogForTurnOffGPS() {
 
 
   // if already off, return
-  if (fona.GPSstatus() == 0) {
+  if (fona.GPSstatusSIM7000() == 0) {
     return;
   }
 
@@ -475,11 +452,7 @@ void watchDogForKillSwitch() {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
-#ifdef DOOR_OPTION
-    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened while door alert active"));
-#else
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted while kill switch active"));
-#endif
     g_volatileStartAttemptedWhileKillSwitchActive = false;
   }
 }
@@ -522,7 +495,7 @@ void watchDogForGeofence() {
   char currentLat[12];
   char currentLon[12];
   char currentSpeed[4];
-  char currentDir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
+  char currentDir[4];
 
   if (watchDogForFollow(currentLat, currentLon, currentSpeed, currentDir))
     return;
@@ -587,11 +560,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   else
     strcpy_P(message, PSTR("FENCE WARNING!"));
 
-  strcat_P(message, PSTR("\\\\nCurrent:\\\\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\\\nCurrent:\\\\nmaps.google.com/?ll="));
   strcat(message, currentLat);
   strcat_P(message, PSTR(","));
   strcat(message, currentLon);
-  strcat_P(message, PSTR("\\\\nHome:\\\\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\\\nHome:\\\\nmaps.google.com/?ll="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -611,7 +584,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
 }
 
 void checkSMSInput() {
-  int8_t numberOfSMSs = fona.getNumSMS();
+  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
   debugPrint(F("SMS: ")); debugPrintln(numberOfSMSs);
 
   if (numberOfSMSs < 1)
@@ -643,7 +616,7 @@ void checkSMSInput() {
     fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
     toLower(smsValue);
 
-    debugPrint(F("IN : "));
+    debugPrintln(F("SMS:"));
     debugPrintln(smsValue);
 
     // exact match
@@ -678,11 +651,18 @@ void checkSMSInput() {
     } 
 
     // "contains" match
-#ifdef DOOR_OPTION
-    if (strstr_P(smsValue, PSTR("door"))) {
-#else
+    if (strstr_P(smsValue, PSTR("time"))) {
+      // Why send in hours and not the timezone?  If daylight savings goes away in the future, doing calculations based on dates will break
+      // Hopefully this is easy for the user
+      handleTimeReq(smsSender, smsValue);
+
+      // delete regardless, don't retry this one (clock might get set wrong)
+      deleteSMS(smsSlotNumber);
+      continue;
+    } 
+
+    // "contains" match
     if (strstr_P(smsValue, PSTR("kill"))) {
-#endif
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
@@ -769,7 +749,7 @@ void checkSMSInput() {
 
     // exact match first character
     if (smsValue[0] == '~') {
-      // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
+      // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
       fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
       handleATCommandReq(smsSender, &smsValue[1]);
       deleteSMS(smsSlotNumber);
@@ -797,11 +777,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     
-#ifdef DOOR_OPTION
-    strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or door\\\\nRadius: "));
-#else
     strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or kill\\\\nRadius: "));
-#endif
     strcat(message, geofenceRadius);
     strcat_P(message, STR_HOME);
     strcat(message, geofenceHomeLat);
@@ -868,14 +844,14 @@ bool handleLockReq(char* smsSender) {
     EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
     EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
   
-    // set primary variables (except Follow) to enabled, always on, etc. and use radius = 500
+    // set primary variables (except Follow) to enabled, always on, etc. and use radius = 150
     // and set fence Home to current location
 
     EEPROM.put(GEOFENCEENABLED_BOOL_1, true);
     getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    strcpy_P(geofenceRadius, PSTR("500"));
+    strcpy_P(geofenceRadius, PSTR("150"));
     EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     EEPROM.put(GEOFENCESTART_CHAR_3, "00");
     EEPROM.put(GEOFENCEEND_CHAR_3, "00");
@@ -998,11 +974,7 @@ bool handleStatusReq(char* smsSender) {
       strcat_P(message, PSTR("\\\\nFence: Disabled"));
   
     if (kill) {
-#ifdef DOOR_OPTION
-      strcat_P(message, PSTR("\\\\nDoor: Enabled "));
-#else
       strcat_P(message, PSTR("\\\\nKill: Enabled "));
-#endif
 
       EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
       strcat(message, hour);
@@ -1011,11 +983,7 @@ bool handleStatusReq(char* smsSender) {
       strcat(message, hour);
     }
     else
-#ifdef DOOR_OPTION
-      strcat_P(message, PSTR("\\\\nDoor: Disabled"));
-#else
       strcat_P(message, PSTR("\\\\nKill: Disabled"));
-#endif
   }
 
   strcat_P(message, PSTR("\\\\nRSSI: "));
@@ -1030,10 +998,10 @@ bool handleLocReq(char* smsSender) {
   char latitude[12];
   char longitude[12];
   char speed[4];
-  char dir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
+  char dir[4];
 
   if (getGPSLatLonSpeedDir(latitude, longitude, speed, dir)) {
-    strcpy_P(message, PSTR("google.com/search?q="));
+    strcpy_P(message, PSTR("maps.google.com/?ll="));
     strcat(message, latitude);
     strcat_P(message, PSTR(","));
     strcat(message, longitude);
@@ -1051,11 +1019,11 @@ bool handleLocReq(char* smsSender) {
 bool handleUseSMSReq(char* smsSender, char* smsValue) {
   if (strcmp_P(smsValue, PSTR("usesmsplain")) == 0) {
     EEPROM.put(USEPLAINSMS_BOOL_1, true);
-    sendSMS(smsSender, F("Plain"));
+    sendSMS(smsSender, F("Plain SMS"));
   }
   if (strcmp_P(smsValue, PSTR("usesmsoverip")) == 0) {
     EEPROM.put(USEPLAINSMS_BOOL_1, false);
-    sendSMS(smsSender, F("IP"));
+    sendSMS(smsSender, F("SMS over IP"));
   }
 }
 
@@ -1076,12 +1044,104 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable/disable"));
 }
 
+bool handleTimeReq(char* smsSender, char* smsValue) {
+  char localHourStr[4];
+  int8_t localHourInt = -1;
+
+  char message[113] = {0};
+  strcpy_P(message, PSTR("System Time: "));
+
+  if (strstr_P(smsValue, PSTR("time set "))) {
+    getOccurrenceInDelimitedString(smsValue, localHourStr, 3, ' ', 3);
+    localHourInt = atoi(localHourStr);
+
+    // If atoi can't find a translation (it returns 0) AND the first character isn't '0' then something's wrong
+    if (localHourInt == 0 && localHourStr[0] != '0')
+      localHourInt = -1;
+  }
+
+  // We normally don't do this, but we're re-using tempTimeStr here
+  // In the call to enableNTPTimeSync(), it gets formatted as an NTP time string:    "2020/05/26,21:26:21"  INCLUDING quotes
+  // In our response to the user down below, it's formatted as a SimCom time string: "20/01/31,17:03:55-20" INCLUDING quotes
+  char tempTimeStr[23];
+
+  if (localHourInt >= 0 && localHourInt < 24) {
+    char tzOffsetStr[4] = "00";
+    int8_t tzOffsetInt;
+
+    // get current UTC time into tempTimeStr
+    fona.enableNTPTimeSync(true, tzOffsetStr, tempTimeStr, 22);
+
+    // NTP time string (quotes are part of the string): "2020/05/26,21:26:21"
+    int8_t utcHourInt = getTimePartInt(12, tempTimeStr);
+  
+    // set the offset to the difference of what the user sent in and the current utc hour... with some caveats
+    if (localHourInt - utcHourInt > 12)
+      tzOffsetInt = localHourInt - utcHourInt - 24;
+    else {
+      if (localHourInt - utcHourInt < -12)
+        tzOffsetInt = localHourInt - utcHourInt + 24;
+      else
+        tzOffsetInt = localHourInt - utcHourInt;
+    }
+
+    // From SIM7000 AT command reference:
+    //   String type(string should be included in quotation marks) value
+    //   format is "yy/MM/dd,hh:mm:ss±zz", where characters indicate year (two last digits),
+    //   month, day, hour, minutes, seconds and time zone (indicates the difference, expressed 
+    //   in quarters of an hour, between the local time and GMT; range -47...+48). 
+    //   E.g. 6th of May 2010, 00:01:52 GMT+2 hours equals to "10/05/06,00:01:52+08".
+    tzOffsetInt = tzOffsetInt * 4;
+    itoa(tzOffsetInt, tzOffsetStr, 10);
+
+    // change "-5" to "-05"
+    if (tzOffsetInt > -10 && tzOffsetInt < 0) {
+      tzOffsetStr[3] = '\0';
+      tzOffsetStr[2] = tzOffsetStr[1];
+      tzOffsetStr[1] = '0';
+    }
+    // change "4" to "+04"
+    if (tzOffsetInt >=0 && tzOffsetInt < 10) {
+      tzOffsetStr[3] = '\0';
+      tzOffsetStr[2] = tzOffsetStr[0];
+      tzOffsetStr[1] = '0';
+      tzOffsetStr[0] = '+';
+    }
+    // change "20" to "+20"
+    if (tzOffsetInt > 10) {
+      tzOffsetStr[3] = '\0';
+      tzOffsetStr[2] = tzOffsetStr[1];
+      tzOffsetStr[1] = tzOffsetStr[0];
+      tzOffsetStr[0] = '+';
+    }
+
+    EEPROM.put(TIMEZONE_CHAR_4, tzOffsetStr);
+  
+    // set the clock to the right time using the offset.  Don't worry, tempTimeStr is not being used to sync time, it's just being overwritten here
+    if (fona.enableNTPTimeSync(true, tzOffsetStr, tempTimeStr, 22))
+      updateLastResetTime();
+
+    getTime(tempTimeStr);
+    strcat(message, tempTimeStr);
+  }
+  // just get current time and add "Try..."
+  else {
+    getTime(tempTimeStr);
+    strcat(message, tempTimeStr);
+    strcat_P(message, PSTR("\\\\nTry 'time set' plus:\\\\n(the current hour of the day 0-23)"));
+  }
+
+  sendSMS(smsSender, message);
+  // always return true
+  return true;
+}
+
 bool handleBothReq(char* smsSender, char* smsValue) {
   return handleKillSwitchReq(smsSender, smsValue, true) && handleGeofenceReq(smsSender, smsValue, true);
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[69];
+  char message[69] = {0};
 
   bool validMessage = false;
   bool killSwitchEnabled;
@@ -1093,17 +1153,10 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
   validMessage = setEnableAndHours(smsValue, KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3, killSwitchEnabled, killSwitchStart, killSwitchEnd);
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
-#ifdef DOOR_OPTION
-    if (killSwitchEnabled)
-      strcpy_P(message, PSTR("Door: Enabled\\\\nHours: "));
-    else
-      strcpy_P(message, PSTR("Door: Disabled\\\\nHours: "));
-#else
     if (killSwitchEnabled)
       strcpy_P(message, PSTR("Kill: Enabled\\\\nHours: "));
     else
       strcpy_P(message, PSTR("Kill: Disabled\\\\nHours: "));
-#endif
 
     strcat(message, killSwitchStart);
     strcat_P(message, PSTR("-"));
@@ -1124,11 +1177,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
       strcat_P(message, PSTR("both"));
     }
     else {
-#ifdef DOOR_OPTION
-      strcat_P(message, PSTR("door"));
-#else
       strcat_P(message, PSTR("kill"));
-#endif
     }
     strcat_P(message, PSTR("' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)"));
     return sendSMS(smsSender, message);
@@ -1176,9 +1225,9 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (geofenceEnabled)
-      strcpy_P(message, PSTR("Fence: Enabled\\\\nHours: "));
+      strcat_P(message, PSTR("Fence: Enabled\\\\nHours: "));
     else
-      strcpy_P(message, PSTR("Fence: Disabled\\\\nHours: "));
+      strcat_P(message, PSTR("Fence: Disabled\\\\nHours: "));
 
     strcat(message, geofenceStart);
     strcat_P(message, PSTR("-"));
@@ -1204,7 +1253,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 100 (100 meters)"));
     }
   }
 }
@@ -1267,46 +1316,18 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-#ifdef DOOR_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
-#else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
-#endif
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\ntime"));
 }
 
 void handleATCommandReq(char* smsSender, char* smsValue) {
   // This is for executing arbitrary AT commands.
   // if there are " chars, you have to escape them. Example messages:
   //    ~at+cgdcont=1,\"IP\",\"hologram\"
-  //    ~at+cops=1,1,\"AT&T\" // AT&T - manual/force connect
-  //    ~at+cops=1,2,310410   // AT&T - manual/force connect
-  //    ~at+cops=4,1,\"AT&T\" // AT&T - automatic connect
-  //    ~at+cops=4,2,310410   // AT&T - automatic connect
+  //    ~at+cops=4,1,\"AT&T\"
+  //    ~at+cops=4,2,310410   // AT&T
   //    ~at+cops=4,2,310260   // T-Mobile
-  //
-  // Response:
-  //    <mode>[,<format>,<operator>[,< AcT>]]
-  //    <mode>
-  //      0 – automatic
-  //      1 – manual
-  //      2 – force deregister
-  //      3 – set only <format>
-  //      4 – manual/automatic
-  //      5 – manual,but do not modify the network selection mode(e.g GSM,WCDMA) after module resets.
-  //    <format>
-  //      0 – long format alphanumeric <oper>
-  //      1 – short format alphanumeric <oper>
-  //      2 – numeric <oper>
-  //    <operator>
-  //      "AT&T", etc.
-  //    <AcT> Access technology selected
-  //      0 – GSM
-  //      1 – GSM Compact
-  //      2 – UTRAN
-  //      7 – EUTRAN
-  //      8 – CDMA/HDR
   
-  // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
+  // special: we must pass the case-sensitive version of smsValue to handleDevKeyReq because the devKey is case sensitive
   char response[141];
   fona.executeATCommand(smsValue, response, 140);
   removeNonAlphaNumChars(response);
@@ -1331,7 +1352,7 @@ bool handleUnknownReq(char* smsSender) {
 bool setGPS(bool tf) {
   // turns SimCom GPS on or off (don't waste power)
   if (!tf) {
-    if (fona.enableGPS(false)) {
+    if (fona.enableGPSSIM7000(false)) {
       return true;
     }
     return false;
@@ -1362,47 +1383,41 @@ bool setGPS(bool tf) {
   //  1 = no GPS fix
   //  2 = 2D fix
   //  3 = 3D fix
-  if (fona.GPSstatus() >= 2) {
+  if (fona.GPSstatusSIM7000() >= 2) {
     g_lastGPSConnAttemptWorked = true;
     return true;
   }
 
   // Keep trying to get a valid (non-error) response. Maybe we should turn off/on?
   for (int8_t i = 1; i < 30; i++) {
-    if (fona.GPSstatus() >= 0) {
+    if (fona.GPSstatusSIM7000() >= 0) {
       break;
     }
     delay(2000);
   }
 
   // error, give up
-  if (fona.GPSstatus() < 0) {
+  if (fona.GPSstatusSIM7000() < 0) {
     debugBlink(1,5);
     g_lastGPSConnAttemptWorked = false;
-    fona.enableGPS(false);
+    fona.enableGPSSIM7000(false);
     return false;
   }
 
   // turn on
-  fona.enableGPS(true);
+  fona.enableGPSSIM7000(true);
   delay(4000);
 
   // wait up to 90s to get GPS fix
   for (int8_t j = 0; j < 23; j++) {
-    if (fona.GPSstatus() >= 2) {
+    if (fona.GPSstatusSIM7000() >= 2) {
       debugBlink(1,8);
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
       // We have to sendRaw() because if we call getGPS we're calling the function that called this function.
-      if (fona.type() == SIM7000) {
-        sendRawCommand(F("AT+CGNSINF"));
-        delay(3000);
-        sendRawCommand(F("AT+CGNSINF"));
-      } else {
-        sendRawCommand(F("AT+CGNSSINFO"));
-        delay(3000);
-        sendRawCommand(F("AT+CGNSSINFO"));
-      }
+      sendRawCommand(F("AT+CGNSINF"));
+      delay(3000);
+      sendRawCommand(F("AT+CGNSINF"));
       g_lastGPSConnAttemptWorked = true;
       return true;
     }
@@ -1412,7 +1427,7 @@ bool setGPS(bool tf) {
   // no fix, give up
   debugBlink(1,7);
   g_lastGPSConnAttemptWorked = false;
-  fona.enableGPS(false);
+  fona.enableGPSSIM7000(false);
   return false;
 }
 
@@ -1442,39 +1457,18 @@ bool getGPSLatLon(char* latitude, char* longitude) {
   
 bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
   char gpsString[120];
-  char NS[2];
-  char EW[2];
 
   if (setGPS(true)){
-    // full string SIM7000:
-    //    1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-    // full string SIM7500:
-    //    2,06,00,00,3012.586830,N,09745.886045,W,080421,220736.0,183.9,0.0,227.5,1.3,1.0,0.8
+    // full string:
+    // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPS(0, gpsString, 120);
-
-      if (fona.type() == SIM7000) {
-        getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
-        getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
-      }
-      else {
-        getOccurrenceInDelimitedString(gpsString, latitude, 5, ',', 11);
-        getOccurrenceInDelimitedString(gpsString, NS, 6, ',');
-        getOccurrenceInDelimitedString(gpsString, longitude, 7, ',', 11);
-        getOccurrenceInDelimitedString(gpsString, EW, 8, ',');
-
-        convertDegreesToDecimal(latitude, NS[0]);
-        convertDegreesToDecimal(longitude, EW[0]);
-      }
+      fona.getGPSSIM7000(0, gpsString, 120);
+  
+      getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
+      getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
       if (speed != NULL) {
-        if (fona.type() == SIM7000) {
-          getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
-          getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
-        }
-        else {
-          getOccurrenceInDelimitedString(gpsString, speed, 12, ',', 3);
-          getOccurrenceInDelimitedString(gpsString, dir, 13, ',', 3);
-        }
+        getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
+        getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
         getDirFromDegrees(dir);
       }
 
@@ -1491,8 +1485,8 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     }
   }
 
-  // I've seen where setGPS(true) above worked, but then then fona.getGPS() failed a few times in a row, but each
-  // time I saw this, fona.getGPS() began working consistently afterwards, so do NOT do either of the following:
+  // I've seen where setGPS(true) above worked, but then then fona.getGPSSIM7000() failed a few times in a row, but each
+  // time I saw this, fona.getGPSSIM7000() began working consistently afterwards, so do NOT do either of the following:
   //      g_lastGPSConnAttemptWorked = false;
   //      setGPS(false);
 
@@ -1505,60 +1499,12 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
   return false;
 }
 
-void convertDegreesToDecimal(char* inLatStr, char NSEW) {
-  // convert DDmm.mmmmmm (lat) or DDDmm.mmmmmm (lon) to decimal where D = Decimal, m = minute
-  // This SUCKS. Why the hell did they format it like this?
-
-  // NSEW is the char N or S or E or W
-
-  // inLatStr will look like
-  //    3012.586830 (lat)
-  //    or
-  //    12045.88604 or 09745.888562 (lon)
-  float tempFloat;
-  int8_t decimalSize;     // decimalSize will be 2 for latitude or 3 for longitude because lat is between 0..90 while lon is between 0..180
-
-  if (NSEW == 'N' || NSEW == 'S')
-    decimalSize = 2;      // we're working on latitude
-  else
-    decimalSize = 3;
-  
-  // if inLatStr == "09745.888562"
-  // then make tempFloat = 45.888562
-  // this is the "minutes" part of the number
-  tempFloat = atof(&inLatStr[decimalSize]);
-
-  // we want to keep the first 2-3 chars unmolested since they're correct as they are passed into this function.  Add a decimal point.
-  inLatStr[decimalSize] = '.';
-
-  // convert minutes to decimal by dividing by 60
-  tempFloat = tempFloat / 60.0;       // 45.888562 -> 0.7648093
-
-  uint16_t tempInt;
-  // any fancy float -> string functions are too big to use.  i'll write my own.
-  for (int i=decimalSize+1; i<decimalSize+7; i++) {
-    tempFloat = tempFloat * 10;                 // 0.20978 -> 2.0978
-    tempInt = tempFloat;                        // tempInt = 2
-    inLatStr[i] = tempInt + '0';                // tempStr[i] = '2'
-    tempFloat = tempFloat - (float)tempInt;     // 2.0978 -> 0.0978
-  }
-
-  inLatStr[decimalSize+7] = '\0';
-
-  if (NSEW == 'S' || NSEW == 'W') {
-    char tempStr[12];
-    strcpy(tempStr, inLatStr);
-    inLatStr[0] = '-';     // lat or long is negative
-    strcpy(&inLatStr[1], tempStr);
-  }
-}
-
 //bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
 //  char gpsString[120];
 //
 //  // full GPS string:
 //  // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-//  fona.getGPS(0, gpsString, 120);
+//  fona.getGPSSIM7000(0, gpsString, 120);
 //  getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
 //
 //  // if GPS is already working OR we turn it on successfully
@@ -1581,12 +1527,12 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //        return true;
 //      }
 //      else
-//        fona.getGPS(0, gpsString, 120);
+//        fona.getGPSSIM7000(0, gpsString, 120);
 //    }
 //  }
 //
-//  // I've seen where setGPS(true) above worked, but then then fona.getGPS() failed a few times in a row, but each
-//  // time I saw this, fona.getGPS() began working consistently afterwards, so do NOT do either of the following:
+//  // I've seen where setGPS(true) above worked, but then then fona.getGPSSIM7000() failed a few times in a row, but each
+//  // time I saw this, fona.getGPSSIM7000() began working consistently afterwards, so do NOT do either of the following:
 //  //      g_lastGPSConnAttemptWorked = false;
 //  //      setGPS(false);
 //  latitude[0] = '\0';
@@ -1595,31 +1541,19 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //}
 
 bool getGPSTime(char* timeStr) {
-  // timeStr will be in GMT and will look like YYYYMMDDhhmmss.xxx
   char gpsString[120];
-  char tempTimeStr[9];
 
   if (setGPS(true)){
     // full string:
-    // SIM7000: AT+CGNSINF:   +CGNSINF: 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-    // SIM7500: AT+CGNSSINFO: +CGNSSINFO: 2,06,00,00,3012.586884,N,09745.881688,W,080421,223651.0,196.1,0.0,0.0,1.5,1.2,0.9
-    //                                           ...,lat        ,S,lon         ,E,DDMMYY,HHmmss.0,  alt,spd,dir,...
-    
+    // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPS(0, gpsString, 120);
-
-      if (strlen(gpsString) > 40) {
-        if (fona.type() == SIM7000)
-          getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
-        else {
-          getOccurrenceInDelimitedString(gpsString, tempTimeStr, 10, ',');
-          strcpy_P(timeStr, PSTR("20210101_________0"));    // we don't care about the date, this is an edge case
-          strcpy(&timeStr[8], tempTimeStr);                 // overwrite the _________ with the real time... from the exmple above, 20210101_________0 -> 20210101223651.0_0
-          timeStr[16] = '0';                                // and change the '\0' that strcpy left to a '0'... from the exmple above, 20210101223651.0_0 -> 20210101223651.000
-        }
+      fona.getGPSSIM7000(0, gpsString, 120);
+  
+      getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
+  
+      if (strlen(gpsString) > 40 && strstr_P(gpsString, PSTR("1,1,20"))) {
         return true;
       }
-
       delay(2000);
     }
   }
@@ -1666,7 +1600,8 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
   dist_calc += dist_calc2;
 
   dist_calc = (2 * atan2(sqrt(dist_calc), sqrt(1.0 - dist_calc)));
-  dist_calc *= 20902231.64; //Converting to feet
+  // dist_calc *= 20902231.64; //Converting to feet
+  dist_calc *= 6371000.20; //Converting to meters
 
   return dist_calc > geofenceRadiusFloat;
 }
@@ -1684,7 +1619,7 @@ void getTime(char* currentTimeStr) {
     if (currentTimeStr[0] == '"' && strlen(currentTimeStr) == 22)
       return;
 
-    // else, try simple self-healing.  If echo is on, basically all commands to SimCom module won't work.
+    // else, try simple self-healing.  If echo is on, basically all commands to SIM7000 won't work.
     fona.setEchoOff();
     delay(1000);
   }
@@ -1748,8 +1683,7 @@ bool isActive(int16_t eepromEnabled, int16_t eepromStart, int16_t eepromEnd) {
   if (strcmp(startHour, endHour) == 0)
     return true;
 
-  // 2 = clock is not valid
-  if (isClockValid() == 2)
+  if (!isClockValid())
     return false;
 
   short currentHour = getTimePartInt(HOUR_INDEX);
@@ -1776,11 +1710,11 @@ void checkForDeadMessages() {
     return;
   }
 
-  // SIM card can only hold 10 messages, it cannot see the rest until those 10 are processed.  That means if we are debugging
-  // and send "deleteallmessages" and there are already 10 queue'd up, SimCom module will never see the "deleteallmessages" message.
+  // sim7000 can only hold 10 messages, it cannot see the rest until those 10 are processed.  That means if we are debugging
+  // and send "deleteallmessages" and there are already 10 queue'd up, sim7000 will never see the "deleteallmessages" message.
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
   // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
-  int8_t numberOfSMSs = fona.getNumSMS();
+  int8_t numberOfSMSs = fona.getNumSMSSIM7000();
   if (numberOfSMSs == 10) {
     fona.deleteAllSMS();
   }
@@ -1834,7 +1768,7 @@ bool sendSMS(char* send_to, char* message) {
   cleanMessage(usePlainSMS, message);
 
   if (usePlainSMS) {
-    if (fona.sendSMS(send_to, message)) {
+    if (fona.sendSMSSIM7000(send_to, message)) {
       debugBlink(1,6);
       updateLastResetTime();
       g_totalFailedSendSMSAttempts = 0;   
@@ -1891,8 +1825,7 @@ bool sendSMS(char* send_to, char* message) {
   strcat(hologramSMSString, "\\\"}\",\"t\":\"TWIL\"}");
   hologramSMSStringLength = strlen(hologramSMSString);
   
-  debugPrint(F("OUT: "));
-  debugPrintln(message);
+  debugPrint(F("SMS: "));
   debugPrintln(hologramSMSString);
 
   int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
@@ -2001,14 +1934,12 @@ void writeCStringToEEPROM(int16_t eepromAddress, char* data) {
   EEPROM.put(eepromAddress+i, '\0');
 }
 
-void setSimComFunctionality(bool onOff) {
+void setSimComFuntionality(bool onOff) {
   if (onOff) {
     sendRawCommand(F("AT+CFUN=1,1"));
-    delay(20000);
   } else {
     setGPS(false);
     sendRawCommand(F("AT+CFUN=0,0"));
-    delay(20000);
   }
 }
 
@@ -2215,14 +2146,14 @@ void setKillSwitchPins(bool tf) {
 }
 
 void setupSimCom() {
-  debugPrintln(F("SimCom"));
+  debugPrint(F("SimCom"));
   // let SimCom module start up before we try to connect
   SimComSerial->begin(9600);
 
-  for (int8_t i = 0; i < 6; i++) {
-    fona.begin(*SimComSerial);
+  for (int8_t i = 0; i < 3; i++) {
+    fona.beginSIM7000(*SimComSerial);
 
-    if (fona.getNumSMS() >= 0) {
+    if (fona.getNumSMSSIM7000() >= 0) {
       debugPrintln(F("\nSucc"));
       g_SimComConnectionStatus = 2; // set to 2 because setupSimCom() needs to be followed by waitUntilNetworkConnected() which will update g_SimComConnectionStatus = 0
       debugBlink(0,4);
@@ -2239,23 +2170,16 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     return;
   }
 
-  debugPrintln(F("Network"));
+  debugPrint(F("Network"));
   int8_t netConn;
 
-  fona.setEchoOff();
   fona.setNetworkSettings(APN, F(""), F(""));
 
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
-  for (int16_t i = secondsToWait; i > 0; i--) {
-    // About to run out of time... last ditch effort...
-    // set Cellular OPerator Selection to "automatic"
-    if (i < 5)
-      fona.setNetworkOperator(F("AT&T"));
-
-    fona.setEchoOff();
-    netConn = fona.getNetworkStatus();
+  for (int16_t i = 0; i < secondsToWait; i++) {
+    netConn = fona.getNetworkStatusSIM7000();
 
     // netConn status meanings:
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
@@ -2275,7 +2199,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
       debugPrintln(F("\nSucc"));
       g_SimComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
-      fona.TCPshut();
+      fona.TCPshut();  // just in case GPRS is still on for some reason, save power
       return;
     }
     delay(2000);
@@ -2286,7 +2210,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     netConn = 2;
 
   g_SimComConnectionStatus = netConn;
-  setSimComFunctionality(false);
+  setSimComFuntionality(false);
 }
 
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
@@ -2304,19 +2228,16 @@ void initBaud() {
   debugPrintln(F("Trying to connect at 9600"));
   SimComSerial->begin(9600);
 
-  if (! fona.begin(*SimComSerial)) {
+  if (! fona.beginSIM7000(*SimComSerial)) {
     debugPrintln(F("Trying to connect at 115200"));
     SimComSerial->begin(115200);
     
-    if (! fona.begin(*SimComSerial)) {
+    if (! fona.beginSIM7000(*SimComSerial)) {
       debugPrintln(F("ERROR: Could not connect at 9600 or 115200"));
       return;
     } else {
       debugPrintln(F("Connected at 115200, setting to 9600..."));
-      if (fona.type() == SIM7000)
-        sendRawCommand(F("AT+IPR=9600"));
-      else
-        sendRawCommand(F("AT+IPREX=9600"));
+      sendRawCommand(F("AT+IPR=9600"));
       SimComSerial->begin(9600);
     }
   } else {
@@ -2331,7 +2252,7 @@ void initEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "10.7869289");
-  EEPROM.put(GEOFENCERADIUS_CHAR_7, "500");
+  EEPROM.put(GEOFENCERADIUS_CHAR_7, "150");
   EEPROM.put(GEOFENCESTART_CHAR_3, "23");
   EEPROM.put(GEOFENCEEND_CHAR_3, "07");
   EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
@@ -2344,7 +2265,7 @@ void initEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_SAVED_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_SAVED_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_SAVED_12, "10.7869289");
-  EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, "500");
+  EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, "150");
   EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, "00");
   EEPROM.put(GEOFENCEEND_CHAR_SAVED_3, "00");
   EEPROM.put(KILLSWITCHENABLED_BOOL_SAVED_1, false);
@@ -2365,19 +2286,12 @@ void initSimCom() {
   // used on brand-new SimCom module
   debugPrintln(F("Begin initSimCom()"));
 
-  sendRawCommand(F("ATZ"));                   // Reset settings
-
-  sendRawCommand(F("AT+CMEE=2"));             // Turn on verbose mode
-  if (fona.type() == SIM7000) {
-    sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600
-    sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
-    sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
-  } else {
-    sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600
-  }
-  fona.setNetworkOperator(F("AT&T"));         // Set Cellular OPerator Selection to "automatic"
-  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));  // ...this is really important, so I'm doubling up.
-  sendRawCommand(F("AT+CMEE=0"));             // Turn off verbose mode
+  sendRawCommand(F("ATZ"));                 // Reset settings
+  sendRawCommand(F("AT+CMEE=2"));           // Turn on verbose mode
+  sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
+  sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
+  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));           // Set Cellular OPerator Selection to "automatic"
+  sendRawCommand(F("AT+CMEE=0"));           // Turn off verbose mode
 
   sendRawCommand(F("AT&W"));                // save writeable settings
 
@@ -2401,32 +2315,32 @@ void initSimCom() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void debugPrint(char* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.print(str);
 #endif
 }
 void debugPrint(const __FlashStringHelper* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.print(str);
 #endif
 }
 void debugPrintln(char* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(str);
 #endif
 }
 void debugPrintln(const __FlashStringHelper* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(str);
 #endif
 }
 void debugPrintln(String s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
 void debugPrintln(uint8_t s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
@@ -2442,7 +2356,6 @@ void putEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "0.0");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "0.0");
-  EEPROM.put(TIMEZONE_CHAR_4, "-12");
 }
 
 void getEEPROM() {
@@ -2508,53 +2421,61 @@ void checkSerialInput() {
     return;
   }
 
-  char command[120];
-
-  int16_t i = 0;
-  for (; Serial.available(); i++) {
-    command[i] = Serial.read();
-  }
-  command[i-1] = '\0';
-
+  String command;
+  command = Serial.readString();
   debugPrintln(command);
   handleSerialInput(command);
 }
 
-void handleSerialInput(char* temp) {
+void handleSerialInput(String command) {
 
-  if (strcmp_P(temp, PSTR("t")) == 0) {
-    char gpsTimeStr[19];
-    getGPSTime(gpsTimeStr);
-  }
+  command.trim();
+  char* temp = command.c_str();
 
-  if (temp[0] == 'g') {
+  if (strcmp_P(temp, PSTR("g")) == 0) {
     getEEPROM();
   }
-  if (temp[0] == 'p') {
+  if (strcmp_P(temp, PSTR("p")) == 0) {
     putEEPROM();
   }
-  if (temp[0] == 'e') {
+  if (strcmp_P(temp, PSTR("e")) == 0) {
     resetSystem();
   }
-  if (temp[0] == 'd') {
+  if (strcmp_P(temp, PSTR("d")) == 0) {
     fona.deleteAllSMS();
   }
-  if (temp[0] == 'm') {
+  if (strcmp_P(temp, PSTR("m")) == 0) {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     char message[7]="ip msg";
     sendSMS(ownerPhoneNumber, message);
   }
-  if (temp[0] == 'n') {
+  if (strcmp_P(temp, PSTR("n")) == 0) {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     char message[10]="plain msg";
-    fona.sendSMS(ownerPhoneNumber, message);
+    fona.sendSMSSIM7000(ownerPhoneNumber, message);
   }
 
-  //////////////////////////////////////////////////////////////////////////////
-  // Allow user to directly enter AT commands to the SimCom chip
-  if (temp[0] == 'S') {
+  
+
+
+  
+
+// for SERIAL TUBE:
+
+// AT+CGNSPWR=1 - turn on gps
+// AT+CGPSSTATUS? - get gps status
+// AT+CGNSINF - get loc
+// AT+CBC - battery
+// AT+CMGF=1 - set text SMS mode
+// AT+CPMS? - get number of SMSs
+// AT&V - get profiles
+// AT+CCLK? - get clock
+// AT+CPOWD=1 - power down module
+
+  // Allow user to directly enter serial commands to the SimCom chip
+  if (strcmp_P(temp, PSTR("S")) == 0) {
     sendRawCommand(F("AT+CMEE=2"));
     sendRawCommand(F("ATE1"));
     
@@ -2571,8 +2492,8 @@ void handleSerialInput(char* temp) {
     }
   }
   // Test incoming SMS, for example:
-  // 15554443333_fence status
-  if (strlen(temp) > 4){
+  // 5554443333_fence status
+  if (command.length() > 2){
     char smsSender[15];
     char smsValue[51];
     getOccurrenceInDelimitedString(temp, smsSender, 1, '_');
