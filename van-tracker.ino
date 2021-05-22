@@ -282,6 +282,24 @@ void watchDogForReset() {
   }
   if (g_totalFailedSendSMSAttempts == 6) {
     g_totalFailedSendSMSAttempts = 0;
+
+    bool follow;
+    EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
+  
+    if (follow) {
+      delay(60000);
+      resetSystem();
+      false;
+    }
+
+    // ~AT+CNMP=38 should force module to use LTE only in case it's connecting to 3g
+    // AT+CNBP could be useful, but harder to work with.
+    // actually, at+cnoap should take care of it.  by default it seems: LTE, WCDMA, GSM, CDMA, HDR
+
+    // at+cpsi?
+    // LTE,<Operation Mode>[,<MCC>-<MNC>,<TAC> ,<SCellID>,<PCellID>,<Frequency Band>,<earfcn>,<dlbw>,<ulbw>,<RSRQ>,<RSRP>,<RSSI>,<RSSNR>]
+    // LTE, online          , 310-410   ,0x700a,210662422,346      ,EUTRAN_BAND4    ,2225    ,4     ,4     ,109   ,1097  ,797   ,11
+
     g_SimComConnectionStatus = 2;
   }
 
