@@ -58,7 +58,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 
 
-#define VT_VERSION        F("VT 2.0")
+#define VT_VERSION        F("VT 2.0alpha")
 
 //#define VAN_PROD
 #define VAN_TEST           // Includes debug output to Serial Monitor
@@ -667,6 +667,13 @@ void checkSMSInput() {
       continue;
     }
 
+    // exact match
+    if (strcmp_P(smsValue, PSTR("location")) == 0) {
+      if (handleLocReq(smsSender))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }
+
     // "contains" match
     if (strstr_P(smsValue, PSTR("both"))) {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
@@ -1033,7 +1040,7 @@ bool handleLocReq(char* smsSender) {
   char dir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   if (getGPSLatLonSpeedDir(latitude, longitude, speed, dir)) {
-    strcpy_P(message, PSTR("google.com/search?q="));
+    strcpy_P(message, PSTR("maps.google.com/?LL="));
     strcat(message, latitude);
     strcat_P(message, PSTR(","));
     strcat(message, longitude);
@@ -2590,12 +2597,12 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
 
   debugPrintln(smsValue);
 
-  if (strstr_P(smsValue, PSTR("loc"))) {
+  if (strstr_P(smsValue, PSTR("location"))) {
     handleLocReq(smsSender);
     return;
   }
-  
-  if (strstr_P(smsValue, PSTR("location"))) {
+
+  if (strstr_P(smsValue, PSTR("loc"))) {
     handleLocReq(smsSender);
     return;
   }
