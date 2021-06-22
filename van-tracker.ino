@@ -661,14 +661,7 @@ void checkSMSInput() {
     }
 
     // exact match
-    if (strcmp_P(smsValue, PSTR("loc")) == 0) {
-      if (handleLocReq(smsSender))
-        deleteSMS(smsSlotNumber);
-      continue;
-    }
-
-    // exact match
-    if (strcmp_P(smsValue, PSTR("location")) == 0) {
+    if ((strcmp_P(smsValue, PSTR("loc")) == 0) || (strcmp_P(smsValue, PSTR("location")) == 0)) {
       if (handleLocReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
