@@ -58,7 +58,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 
 
-#define VT_VERSION        F("VT 2.0")
+#define VT_VERSION        F("VT 2.0alpha")
 
 //#define VAN_PROD
 #define VAN_TEST           // Includes debug output to Serial Monitor
@@ -124,7 +124,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define USEPLAINSMS_BOOL_1                132
 #define POWERON_BOOL_1                    133
 
-const char STR_HOME[] PROGMEM = " feet\\\\nHome: google.com/search?q=";
+const char STR_HOME[] PROGMEM = " meters\\\\nHome: maps.google.com/?ll=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
 
 // g_SimComConnectionStatus status meanings
@@ -587,11 +587,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   else
     strcpy_P(message, PSTR("FENCE WARNING!"));
 
-  strcat_P(message, PSTR("\\\\nCurrent:\\\\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\\\nCurrent:\\\\nmaps.google.com/?ll="));
   strcat(message, currentLat);
   strcat_P(message, PSTR(","));
   strcat(message, currentLon);
-  strcat_P(message, PSTR("\\\\nHome:\\\\ngoogle.com/search?q="));
+  strcat_P(message, PSTR("\\\\nHome:\\\\nmaps.google.com/?ll="));
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
   strcat(message, geofenceHomeLon);
@@ -661,7 +661,7 @@ void checkSMSInput() {
     }
 
     // exact match
-    if (strcmp_P(smsValue, PSTR("loc")) == 0) {
+    if ((strcmp_P(smsValue, PSTR("loc")) == 0) || (strcmp_P(smsValue, PSTR("location")) == 0)) {
       if (handleLocReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
@@ -1033,7 +1033,7 @@ bool handleLocReq(char* smsSender) {
   char dir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   if (getGPSLatLonSpeedDir(latitude, longitude, speed, dir)) {
-    strcpy_P(message, PSTR("google.com/search?q="));
+    strcpy_P(message, PSTR("maps.google.com/?LL="));
     strcat(message, latitude);
     strcat_P(message, PSTR(","));
     strcat(message, longitude);
@@ -1204,7 +1204,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current location)\\\\nradius 100 (100 meters)"));
     }
   }
 }
@@ -1268,9 +1268,9 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 
 bool handleCommandsReq(char* smsSender) {
 #ifdef DOOR_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nlocation\\\\nfollow\\\\nowner\\\\npoweron"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nlocation\\\\nfollow\\\\nowner\\\\npoweron"));
 #endif
 }
 
@@ -1666,7 +1666,7 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
   dist_calc += dist_calc2;
 
   dist_calc = (2 * atan2(sqrt(dist_calc), sqrt(1.0 - dist_calc)));
-  dist_calc *= 20902231.64; //Converting to feet
+  dist_calc *= 6371000.20; //Converting to meters
 
   return dist_calc > geofenceRadiusFloat;
 }
@@ -2331,7 +2331,7 @@ void initEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "10.7869289");
-  EEPROM.put(GEOFENCERADIUS_CHAR_7, "500");
+  EEPROM.put(GEOFENCERADIUS_CHAR_7, "150");
   EEPROM.put(GEOFENCESTART_CHAR_3, "23");
   EEPROM.put(GEOFENCEEND_CHAR_3, "07");
   EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
@@ -2344,7 +2344,7 @@ void initEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_SAVED_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_SAVED_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_SAVED_12, "10.7869289");
-  EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, "500");
+  EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, "150");
   EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, "00");
   EEPROM.put(GEOFENCEEND_CHAR_SAVED_3, "00");
   EEPROM.put(KILLSWITCHENABLED_BOOL_SAVED_1, false);
@@ -2589,6 +2589,11 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   toLower(smsValue);
 
   debugPrintln(smsValue);
+
+  if (strstr_P(smsValue, PSTR("location"))) {
+    handleLocReq(smsSender);
+    return;
+  }
 
   if (strstr_P(smsValue, PSTR("loc"))) {
     handleLocReq(smsSender);
