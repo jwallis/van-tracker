@@ -15,6 +15,8 @@ Basic info codes (0 longs followed by THIS MANY shorts):
   2 = about to execute watchdog processes
   3 = about to reset SimCom chip
   4 = after powering on, Arduino successfully connected to SimCom chip
+  5 = trying to connect to SimCom
+  6 = trying to connect to cell network
 
 Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = not used (see below for error codes in failure to send SMS)
@@ -60,12 +62,14 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 #define VT_VERSION        F("VT 2.0")
 
-//#define VAN_PROD
+// Is this a Door-Open model?
+//#define DOOR_OPTION        // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
+
+// ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME.  Choose what version you want to upload/execute on your board.
+//#define VAN_PROD           // NO debug output
 #define VAN_TEST           // Includes debug output to Serial Monitor
 //#define SIMCOM_SERIAL      // Only for interacting with SimCom module using AT commands
-//#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as new arduino's EEPROM
-
-//#define DOOR_OPTION        // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
+//#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as a new Arduino Nano's EEPROM
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -1442,8 +1446,9 @@ bool getGPSLatLon(char* latitude, char* longitude) {
   
 bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* dir) {
   char gpsString[120];
-  char NS[2];
+  char NS[2];   // char[] because we call getOccurrenceInDelimitedString().  I guess we could have used a char and &NS in the call.
   char EW[2];
+  char tempLatLonBugStr[7];  // see Bug fix for SIM7500 farther down
 
   if (setGPS(true)){
     // full string SIM7000:
@@ -1465,6 +1470,18 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
 
         convertDegreesToDecimal(latitude, NS[0]);
         convertDegreesToDecimal(longitude, EW[0]);
+
+        // Bug fix for SIM7500
+        // We have seen errors where the longitude is something like -097.000000 which I must assume means the GPS chip gave us a string like 3012.586830,N,09745.000000,W
+        //   so we will try to detect values such as -097.000000 or 30.000000 and throw out those values.
+        //   We could make convertDegreesToDecimal() do this work for us, but it's not really it's problem, it's our problem
+        getOccurrenceInDelimitedString(latitude, tempLatLonBugStr, 2, '.', 6);
+        if (atof(tempLatLonBugStr) == 0.0)
+            continue;
+        getOccurrenceInDelimitedString(longitude, tempLatLonBugStr, 2, '.', 6);
+        if (atof(tempLatLonBugStr) == 0.0)
+            continue;
+
       }
       if (speed != NULL) {
         if (fona.type() == SIM7000) {
@@ -1481,7 +1498,8 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
       // change "75." to "75"
       if (speed[2] == '.')
         speed[2] = '\0';
-  
+
+      // Bug fix #2
       // We have see errors where the lat,long come back as garbage like "9,43"
       // Leave the != NULL in there in case the '.' is at the 0th position, which I think is valid
       if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
@@ -2215,11 +2233,13 @@ void setKillSwitchPins(bool tf) {
 }
 
 void setupSimCom() {
+  // This can take up to 10 minutes (if it never connects)
   debugPrintln(F("SimCom"));
   // let SimCom module start up before we try to connect
   SimComSerial->begin(9600);
 
   for (int8_t i = 0; i < 6; i++) {
+    debugBlink(0,5);
     fona.begin(*SimComSerial);
 
     if (fona.getNumSMS() >= 0) {
@@ -2234,6 +2254,7 @@ void setupSimCom() {
 }
 
 void waitUntilNetworkConnected(int16_t secondsToWait) {
+  // This can take up to 10 minutes (if it never connects)
   // no point trying to conenct to network if we can't connect to SimCom
   if (g_SimComConnectionStatus == 1) {
     return;
@@ -2249,6 +2270,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   secondsToWait = secondsToWait/2;
   
   for (int16_t i = secondsToWait; i > 0; i--) {
+    debugBlink(0,6);
     // About to run out of time... last ditch effort...
     // set Cellular OPerator Selection to "automatic"
     if (i < 5)
