@@ -18,7 +18,7 @@ Basic info codes (0 longs followed by THIS MANY shorts):
   5 = trying to connect to SimCom
   6 = trying to connect to cell network
 
-Event codes (1 long follow by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
+Event codes (1 long followed by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = not used (see below for error codes in failure to send SMS)
   2  = success sending SMS
   3  = failed  deleting SMS
@@ -1494,13 +1494,17 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
         //   so we will try to detect values such as -097.000000 or 30.000000 and throw out those values.
         //   We could make convertDegreesToDecimal() do this work for us, but it's not really it's problem, it's our problem
         getOccurrenceInDelimitedString(latitude, tempLatLonBugStr, 2, '.', 6);
-        if (atof(tempLatLonBugStr) == 0.0)
-            continue;
+        if (atof(tempLatLonBugStr) == 0.0) {
+          delay(2500);
+          continue;
+        }
         getOccurrenceInDelimitedString(longitude, tempLatLonBugStr, 2, '.', 6);
-        if (atof(tempLatLonBugStr) == 0.0)
-            continue;
-
+        if (atof(tempLatLonBugStr) == 0.0) {
+          delay(2500);
+          continue;
+        }
       }
+
       if (speed != NULL) {
         if (fona.type() == SIM7000) {
           getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
