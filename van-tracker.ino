@@ -60,7 +60,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 
 
-#define VT_VERSION        F("VT 2.0")
+#define VT_VERSION        F("VT 2.1")
 
 // Is this a Door-Open model?
 //#define DOOR_OPTION        // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
@@ -290,6 +290,7 @@ void watchDogForReset() {
     bool follow;
     EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
   
+    // if "follow mode" is on, keep trying to communicate with owner!
     if (follow) {
       delay(60000);
       resetSystem();
