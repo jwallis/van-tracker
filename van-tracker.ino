@@ -286,6 +286,16 @@ void watchDogForReset() {
   }
   if (g_totalFailedSendSMSAttempts == 6) {
     g_totalFailedSendSMSAttempts = 0;
+
+    bool follow;
+    EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
+  
+    if (follow) {
+      delay(60000);
+      resetSystem();
+      return;
+    }
+
     g_SimComConnectionStatus = 2;
   }
 
