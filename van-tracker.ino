@@ -1486,6 +1486,9 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
         // We have seen errors where the longitude is something like -097.000000 which I must assume means the GPS chip gave us a string like 3012.586830,N,09745.000000,W
         //   so we will try to detect values such as -097.000000 or 30.000000 and throw out those values.
         //   We could make convertDegreesToDecimal() do this work for us, but it's not really it's problem, it's our problem
+        //   Ah ha!  Saw this bug in practice. 2 example bad GPS strings.  Hardware bug, as suspected:
+        //     2,07,00,00,3012.588946,N,097,W,130721,003145.0,192.6,0.0,123.3,1.0,0.7,0.7
+        //     2,07,00,00,3012.587635,N,097,
         getOccurrenceInDelimitedString(latitude, tempLatLonBugStr, 2, '.', 6);
         if (atof(tempLatLonBugStr) == 0.0) {
           delay(2500);
