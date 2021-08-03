@@ -15,7 +15,7 @@ Basic info codes (0 longs followed by THIS MANY shorts):
   2 = about to execute watchdog processes
   3 = about to reset SimCom chip
   4 = after powering on, Arduino successfully connected to SimCom chip
-  5 = trying to connect to SimCom
+  5 = after powering on, Arduino trying to connect to SimCom
   6 = trying to connect to cell network
 
 Event codes (1 long followed by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
@@ -60,16 +60,17 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 
 
-#define VT_VERSION        F("VT 2.1")
+#define VT_VERSION        F("VT 2.2")
 
 // Is this a Door-Open model?
-//#define DOOR_OPTION        // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
+//#define DOOR_OPTION               // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
 
 // ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME.  Choose what version you want to upload/execute on your board.
-//#define VAN_PROD           // NO debug output
-#define VAN_TEST           // Includes debug output to Serial Monitor
-//#define SIMCOM_SERIAL      // Only for interacting with SimCom module using AT commands
-//#define NEW_HARDWARE_ONLY  // Initializes new SimCom module as well as a new Arduino Nano's EEPROM
+//#define VAN_PROD                  // NO debug output
+#define VAN_TEST                  // Includes debug output to Serial Monitor
+//#define SIMCOM_SERIAL             // Only for interacting with SimCom module using AT commands
+//#define NEW_HARDWARE_ONLY         // Initializes Arduino Nano's EEPROM and a new SimCom module
+//#define UPGRADING_HARDWARE_ONLY   // Initializes Arduino Nano's EEPROM
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -172,9 +173,21 @@ void setup() {
   setupSimCom();
   initEEPROM();
   initSimCom();
-  debugPrintln(F("\n\nPlease update #ifdefs and restart."));
+  debugPrintln(F("\n\nNEW_HARDWARE_ONLY complete.  Please update #ifdefs and restart."));
   while (1) {
     debugBlink(1,0);
+  }
+#endif
+
+#ifdef UPGRADING_HARDWARE_ONLY
+  // This will likely be done with a cell phone and the VT unit powered off.
+  //   That means when the sketch runs, it won't be able to connect to the SimCom module,
+  //   so we need a version of the code that only updates EEPROM and doesn't try to mess with the SimCom.
+  setupSerial();
+  initEEPROM();
+  debugPrintln(F("\n\nUPGRADING_HARDWARE_ONLY complete.  Please update #ifdefs and restart."));
+  while (1) {
+    debugBlink(1,1);
   }
 #endif
 
@@ -2329,7 +2342,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   setSimComFunctionality(false);
 }
 
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
 void setupSerial() {
   while (!Serial);
   Serial.begin(9600);
@@ -2337,7 +2350,7 @@ void setupSerial() {
 #endif
 
 
-#ifdef NEW_HARDWARE_ONLY
+#if defined NEW_HARDWARE_ONLY || defined UPGRADING_HARDWARE_ONLY
 void initBaud() {
   debugPrintln(F("Init Baud"));
   delay(2000);
@@ -2441,32 +2454,32 @@ void initSimCom() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void debugPrint(char* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
   Serial.print(str);
 #endif
 }
 void debugPrint(const __FlashStringHelper* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
   Serial.print(str);
 #endif
 }
 void debugPrintln(char* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
   Serial.println(str);
 #endif
 }
 void debugPrintln(const __FlashStringHelper* str) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
   Serial.println(str);
 #endif
 }
 void debugPrintln(String s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
 void debugPrintln(uint8_t s) {
-#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL
+#if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
   Serial.println(s);
 #endif
 }
