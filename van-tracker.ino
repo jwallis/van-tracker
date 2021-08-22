@@ -60,7 +60,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 
 
-#define VT_VERSION        F("VT 2.2")
+#define VT_VERSION        F("VT 2.3")
 
 // Is this a Door-Open model?
 //#define DOOR_OPTION               // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
@@ -153,8 +153,8 @@ bool g_geofenceWarningCountMessageSent = false;
 int8_t g_followMessageCount = 0;
 
 volatile bool g_volatileKillSwitchActive = false;
-volatile bool g_volatile_debug = false;
-volatile bool g_volatile_kill_switch_initialized = false;
+volatile bool g_volatileKillSwitchDebug = false;
+volatile bool g_volatileKillSwitchInitialized = false;
 volatile bool g_volatileStartAttemptedWhileKillSwitchActive = false;
 
 //int freeRam () {
@@ -204,7 +204,7 @@ void setup() {
   // if the kill switch is Enabled and Always On, we don't care about the clock, activate it asap
   if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
     setKillSwitchPins(true);
-    g_volatile_kill_switch_initialized = true;
+    g_volatileKillSwitchInitialized = true;
   }
 
   setupSimCom();
@@ -215,7 +215,7 @@ void setup() {
   updateLastResetTime();
   
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
-  g_volatile_kill_switch_initialized = true;
+  g_volatileKillSwitchInitialized = true;
 
   // This is in case we're tied to the door open circuit:
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
@@ -493,9 +493,9 @@ void watchDogForTurnOffGPS() {
 void watchDogForKillSwitch() {
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
-  if (g_volatile_debug) {
+  if (g_volatileKillSwitchDebug) {
       debugPrintln(F("ISR fired"));
-      g_volatile_debug = false;
+      g_volatileKillSwitchDebug = false;
   }
 
   if (g_volatileStartAttemptedWhileKillSwitchActive) {
@@ -2244,14 +2244,14 @@ void pinSetup() {
 
 void starterISR() {
 
-  if (!g_volatile_kill_switch_initialized)
+  if (!g_volatileKillSwitchInitialized)
     return;
 
   _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
 
   // The resistor (hardware) should prevent little spikes from making the ISR fire all the time
   // but if that's happening, this will show us on the debug output
-  g_volatile_debug = true;
+  g_volatileKillSwitchDebug = true;
 
   // when starter is on, PIN is LOW
   if (g_volatileKillSwitchActive && !digitalRead(STARTER_INTERRUPT_PIN))
