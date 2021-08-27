@@ -458,7 +458,7 @@ void updateLastResetTime() {
 }
 
 void resetSystem() {
-  debugPrintln(F("reset"));
+  debugPrintln(F("R"));
   debugBlink(0,3);
   setSimComFunctionality(true);
 
@@ -494,7 +494,7 @@ void watchDogForKillSwitch() {
   setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
   if (g_volatileKillSwitchDebug) {
-      debugPrintln(F("ISR fired"));
+      debugPrintln(F("I"));
       g_volatileKillSwitchDebug = false;
   }
 
@@ -504,9 +504,9 @@ void watchDogForKillSwitch() {
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
 #ifdef DOOR_OPTION
-    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened while door alert active"));
+    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened!"));
 #else
-    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted while kill switch active"));
+    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted!"));
 #endif
     g_volatileStartAttemptedWhileKillSwitchActive = false;
   }
@@ -632,7 +632,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Emergency Only:\\\\nUse 'follow enable' to receive location updates, 'follow disable' to stop"));
+    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for location updates, 'follow disable' to stop"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -673,6 +673,8 @@ void checkSMSInput() {
 
     debugPrint(F("IN : "));
     debugPrintln(smsValue);
+    cleanString(smsValue, ' ');
+    debugPrintln(smsValue);
 
     // exact match
     if (strcmp_P(smsValue, PSTR("unlock")) == 0) {
@@ -688,8 +690,8 @@ void checkSMSInput() {
       continue;
     }
 
-    // exact match
-    if (strcmp_P(smsValue, PSTR("loc")) == 0 || strcmp_P(smsValue, PSTR("location")) == 0) {
+    // exact match || contains match
+    if (strcmp_P(smsValue, PSTR("loc")) == 0 || strstr_P(smsValue, PSTR("locat"))) {
       if (handleLocReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
@@ -1077,13 +1079,13 @@ bool handleLocReq(char* smsSender) {
 }
 
 bool handleUseSMSReq(char* smsSender, char* smsValue) {
-  if (strcmp_P(smsValue, PSTR("usesmsplain")) == 0) {
+  if (strstr_P(smsValue, PSTR("plain"))) {
     EEPROM.put(USEPLAINSMS_BOOL_1, true);
-    sendSMS(smsSender, F("Plain"));
+    sendSMS(smsSender, F("OK"));
   }
-  if (strcmp_P(smsValue, PSTR("usesmsoverip")) == 0) {
+  if (strstr_P(smsValue, PSTR("ip"))) {
     EEPROM.put(USEPLAINSMS_BOOL_1, false);
-    sendSMS(smsSender, F("IP"));
+    sendSMS(smsSender, F("OK"));
   }
 }
 
@@ -1862,7 +1864,7 @@ void cleanMessage(bool usePlainSMS, char* message) {
       if (usePlainSMS && message[i] == '\\' && message[i+1] == '\\' && message[i+2] == 'n') {
           message[index] = '\n';
           i+=2;
-      // Also for Hologra.io + Twilio: '"' char messes things up.  Use '\'' char instead
+      // Also for Hologram.io + Twilio: '"' char messes things up.  Use '\'' char instead
       } else if (message[i] == '"') {
           message[index] = '\'';
       } else {
@@ -1919,9 +1921,9 @@ bool sendSMS(char* send_to, char* message) {
   char devKey[9];
   EEPROM.get(DEVKEY_CHAR_9, devKey);
 
-  // 00000000 is the default devKey (comes from initEEPROM)
-  // we delete the incoming SMS so we don't try to send the msg indefinitely
-  if (strstr_P(devKey, PSTR("00000000"))) {
+  // 0 is the default devKey (comes from initEEPROM)
+  // return true so that we delete the incoming SMS, so that we don't try to send the msg indefinitely
+  if (strcmp_P(devKey, PSTR("0")) == 0) {
     debugBlink(2,9);
     return true;
   }
@@ -1937,7 +1939,7 @@ bool sendSMS(char* send_to, char* message) {
   strcat(hologramSMSString, twilioPhoneNumber);
   strcat_P(hologramSMSString, PSTR("\\\",\\\"m\\\":\\\""));
   strcat(hologramSMSString, message);
-  strcat(hologramSMSString, "\\\"}\",\"t\":\"TWIL\"}");
+  strcat_P(hologramSMSString, PSTR("\\\"}\",\"t\":\"TWIL\"}"));
   hologramSMSStringLength = strlen(hologramSMSString);
   
   debugPrint(F("OUT: "));
@@ -1946,7 +1948,7 @@ bool sendSMS(char* send_to, char* message) {
 
   int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
 
-  debugPrint(F("Code: "));
+  debugPrint(F("?"));
   debugPrintln(successCode);
 
   if (successCode == 0) {
@@ -2265,7 +2267,7 @@ void setKillSwitchPins(bool tf) {
 
 void setupSimCom() {
   // This can take up to 10 minutes (if it never connects)
-  debugPrintln(F("SimCom"));
+  debugPrintln(F("Sim"));
   // let SimCom module start up before we try to connect
   SimComSerial->begin(9600);
 
@@ -2274,7 +2276,7 @@ void setupSimCom() {
     fona.begin(*SimComSerial);
 
     if (fona.getNumSMS() >= 0) {
-      debugPrintln(F("\nSucc"));
+      debugPrintln(F("\nOK"));
       g_SimComConnectionStatus = 2; // set to 2 because setupSimCom() needs to be followed by waitUntilNetworkConnected() which will update g_SimComConnectionStatus = 0
       debugBlink(0,4);
       return;
@@ -2291,7 +2293,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     return;
   }
 
-  debugPrintln(F("Network"));
+  debugPrintln(F("Net"));
   int8_t netConn;
 
   fona.setEchoOff();
@@ -2325,7 +2327,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 3 = Cell network registration denied
     // 4 = Unknown
     if (netConn == 1 || netConn == 5) {
-      debugPrintln(F("\nSucc"));
+      debugPrintln(F("\nOK"));
       g_SimComConnectionStatus = 0;
       fona.setNetworkSettings(APN, F(""), F(""));
       fona.TCPshut();
@@ -2404,7 +2406,7 @@ void initEEPROM() {
   EEPROM.put(KILLSWITCHSTART_CHAR_SAVED_3, "00");
   EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, "00");
   
-  EEPROM.put(DEVKEY_CHAR_9, "00000000");
+  EEPROM.put(DEVKEY_CHAR_9, "0");
   EEPROM.put(TWILIOPHONENUMBER_CHAR_12, "00000000000");
   
   EEPROM.put(TIMEZONE_CHAR_4, "-20");
@@ -2491,6 +2493,89 @@ void debugPrintln(uint8_t s) {
 
 #if defined VAN_TEST || defined SIMCOM_SERIAL
 
+void checkSerialInput() {
+  if (!Serial.available()) {
+    return;
+  }
+
+  char command[120];
+
+  int16_t i = 0;
+  for (; Serial.available(); i++) {
+    command[i] = Serial.read();
+  }
+  command[i-1] = '\0';
+
+  debugPrintln(command);
+  handleSerialInput(command);
+}
+
+void handleSerialInput(char* temp) {
+
+  // PART 1: 
+  // Allow user to directly enter AT commands to the SimCom chip
+  if (temp[0] == 'S') {
+    sendRawCommand(F("AT+CMEE=2"));
+    sendRawCommand(F("ATE1"));
+    
+    delay(2000);    
+
+    while (1) {
+      while (Serial.available()) {
+        delay(1);
+        fona.write(Serial.read());
+      }
+      if (fona.available()) {
+        Serial.write(fona.read());
+      }
+    }
+  }
+
+  // PART 2:
+  // Some convenience commands for testing
+//  if (strcmp_P(temp, PSTR("t")) == 0) {
+//    char gpsTimeStr[19];
+//    getGPSTime(gpsTimeStr);
+//  }
+//  if (temp[0] == 'g') {
+//    getEEPROM();
+//  }
+//  if (temp[0] == 'p') {
+//    putEEPROM();
+//  }
+//  if (temp[0] == 'e') {
+//    resetSystem();
+//  }
+//  if (temp[0] == 'd') {
+//    fona.deleteAllSMS();
+//  }
+//  if (temp[0] == 'm') {
+//    char ownerPhoneNumber[15];
+//    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+//    char message[7]="ip msg";
+//    sendSMS(ownerPhoneNumber, message);
+//  }
+//  if (temp[0] == 'n') {
+//    char ownerPhoneNumber[15];
+//    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+//    char message[10]="plain msg";
+//    fona.sendSMS(ownerPhoneNumber, message);
+//  }
+
+  // PART 3:
+  // Test incoming SMS, for example: 15554443333_fence status
+//  if (strlen(temp) > 4){
+//    char smsSender[15];
+//    char smsValue[51];
+//    getOccurrenceInDelimitedString(temp, smsSender, 1, '_');
+//    getOccurrenceInDelimitedString(temp, smsValue, 2, '_');
+//    testHandleSMSInput(smsSender, smsValue);
+//  }
+
+  flushSerial();
+  flushSimCom();
+}
+
 void putEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "0.0");
@@ -2554,87 +2639,6 @@ void getEEPROM() {
   EEPROM.get(TIMEZONE_CHAR_4, tempc);
   debugPrint(F("TIMEZONE: "));
   debugPrintln(tempc);
-}
-
-void checkSerialInput() {
-  if (!Serial.available()) {
-    return;
-  }
-
-  char command[120];
-
-  int16_t i = 0;
-  for (; Serial.available(); i++) {
-    command[i] = Serial.read();
-  }
-  command[i-1] = '\0';
-
-  debugPrintln(command);
-  handleSerialInput(command);
-}
-
-void handleSerialInput(char* temp) {
-
-  if (strcmp_P(temp, PSTR("t")) == 0) {
-    char gpsTimeStr[19];
-    getGPSTime(gpsTimeStr);
-  }
-
-  if (temp[0] == 'g') {
-    getEEPROM();
-  }
-  if (temp[0] == 'p') {
-    putEEPROM();
-  }
-  if (temp[0] == 'e') {
-    resetSystem();
-  }
-  if (temp[0] == 'd') {
-    fona.deleteAllSMS();
-  }
-  if (temp[0] == 'm') {
-    char ownerPhoneNumber[15];
-    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    char message[7]="ip msg";
-    sendSMS(ownerPhoneNumber, message);
-  }
-  if (temp[0] == 'n') {
-    char ownerPhoneNumber[15];
-    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    char message[10]="plain msg";
-    fona.sendSMS(ownerPhoneNumber, message);
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  // Allow user to directly enter AT commands to the SimCom chip
-  if (temp[0] == 'S') {
-    sendRawCommand(F("AT+CMEE=2"));
-    sendRawCommand(F("ATE1"));
-    
-    delay(2000);    
-
-    while (1) {
-      while (Serial.available()) {
-        delay(1);
-        fona.write(Serial.read());
-      }
-      if (fona.available()) {
-        Serial.write(fona.read());
-      }
-    }
-  }
-  // Test incoming SMS, for example:
-  // 15554443333_fence status
-  if (strlen(temp) > 4){
-    char smsSender[15];
-    char smsValue[51];
-    getOccurrenceInDelimitedString(temp, smsSender, 1, '_');
-    getOccurrenceInDelimitedString(temp, smsValue, 2, '_');
-    testHandleSMSInput(smsSender, smsValue);
-  }
-
-  flushSerial();
-  flushSimCom();
 }
 
 void testHandleSMSInput(char* smsSender, char* smsValue) {
