@@ -58,12 +58,12 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-
-
 #define VT_VERSION        F("VT 2.3")
 
-// Is this a Door-Open model?
-//#define DOOR_OPTION               // substitutes "door" for "kill" in all interactions, i.e. commands incoming from user as well as responses
+// Which VT model is this?
+//#define DOOR_ONLY_OPTION               // uses "door" in all interactions, i.e. commands incoming from user as well as responses
+//#define KILL_ONLY_OPTION               // uses "kill" in all interactions, i.e. commands incoming from user as well as responses
+#define KILL_AND_DOOR_OPTION           // uses "kill" in all interactions, but also has door alerts
 
 // ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME.  Choose what version you want to upload/execute on your board.
 //#define VAN_PROD                  // NO debug output
@@ -71,6 +71,26 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //#define SIMCOM_SERIAL             // Only for interacting with SimCom module using AT commands
 //#define NEW_HARDWARE_ONLY         // Initializes Arduino Nano's EEPROM and a new SimCom module
 //#define UPGRADING_HARDWARE_ONLY   // Initializes Arduino Nano's EEPROM
+
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//    THERE ARE NO USER SETTINGS BELOW THIS LINE
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+//XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+// make sure our #defines are set up correctly
+#if defined KILL_ONLY_OPTION && defined DOOR_ONLY_OPTION
+  "at most 1 VT model can be defined"
+#endif
+#if defined KILL_ONLY_OPTION && defined KILL_AND_DOOR_OPTION
+  "at most 1 VT model can be defined"
+#endif
+#if defined DOOR_ONLY_OPTION && defined KILL_AND_DOOR_OPTION
+  "at most 1 VT model can be defined"
+#endif
+#if !defined KILL_ONLY_OPTION && !defined DOOR_ONLY_OPTION && !defined KILL_AND_DOOR_OPTION
+  "at least 1 VT model must be defined"
+#endif
 
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -115,7 +135,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define GEOFENCEENABLED_BOOL_SAVED_1      62
 #define GEOFENCEHOMELAT_CHAR_SAVED_12     63
 #define GEOFENCEHOMELON_CHAR_SAVED_12     75
-#define GEOFENCERADIUS_CHAR_SAVED_7       87
+#define GEOFENCERADIUS_CHAR_SAVED_7       87    // this is deprecated, but do not re-use this space so that upgrades are simpler
 #define GEOFENCESTART_CHAR_SAVED_3        94
 #define GEOFENCEEND_CHAR_SAVED_3          97
 #define KILLSWITCHENABLED_BOOL_SAVED_1    100
@@ -857,12 +877,12 @@ bool handleLockReq(char* smsSender) {
   
   // check if lockdown is ALREADY ENabled
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
+  EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
 
   if (lockdownEnabled) {
     strcat_P(message, PSTR(" Already"));
     EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
   }
   else {
 
@@ -885,8 +905,6 @@ bool handleLockReq(char* smsSender) {
     EEPROM.put(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
-    EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
-    EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
     EEPROM.get(GEOFENCESTART_CHAR_3, geofenceStart);
     EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
     EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
@@ -905,8 +923,6 @@ bool handleLockReq(char* smsSender) {
     getGPSLatLon(geofenceHomeLat, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    strcpy_P(geofenceRadius, PSTR("500"));
-    EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     EEPROM.put(GEOFENCESTART_CHAR_3, "00");
     EEPROM.put(GEOFENCEEND_CHAR_3, "00");
     EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
@@ -920,6 +936,9 @@ bool handleLockReq(char* smsSender) {
   // send SMS with new geofence home
   strcat_P(message, PSTR(" Enabled\\\\nRadius: "));
   strcat(message, geofenceRadius);
+  
+  // Keep this saying "HOME" even though it's a temporary home
+  // Reason being - if someone steals the van when it's locked, the WARNING will say HOME and CURRENT
   strcat_P(message, STR_HOME);
   strcat(message, geofenceHomeLat);
   strcat_P(message, PSTR(","));
@@ -931,21 +950,15 @@ bool handleLockReq(char* smsSender) {
 bool handleUnlockReq(char* smsSender) {
 
   char message[126];
-  char geofenceHomeLat[12];
-  char geofenceHomeLon[12];
-  char geofenceRadius[7];
   bool lockdownEnabled;
 
   // check if lockdown is ALREADY DISabled
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);
 
-  if (!lockdownEnabled) {
-    EEPROM.get(GEOFENCEHOMELAT_CHAR_SAVED_12, geofenceHomeLat);
-    EEPROM.get(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
-    EEPROM.get(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
-  }
-  else {  
+  if (lockdownEnabled) {
     bool geofenceEnabled;
+    char geofenceHomeLat[12];
+    char geofenceHomeLon[12];
     char geofenceStart[3];
     char geofenceEnd[3];
     bool killSwitchEnabled;
@@ -959,8 +972,6 @@ bool handleUnlockReq(char* smsSender) {
     EEPROM.put(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_SAVED_12, geofenceHomeLon);
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
-    EEPROM.get(GEOFENCERADIUS_CHAR_SAVED_7, geofenceRadius);
-    EEPROM.put(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     EEPROM.get(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
     EEPROM.put(GEOFENCESTART_CHAR_3, geofenceStart);
     EEPROM.get(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
@@ -976,15 +987,7 @@ bool handleUnlockReq(char* smsSender) {
     EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
   }
 
-  // send SMS with original geofenceHome
-  strcpy_P(message, PSTR("Lockdown: Disabled\\\\nRadius: "));
-  strcat(message, geofenceRadius);
-  strcat_P(message, STR_HOME);
-  strcat(message, geofenceHomeLat);
-  strcat_P(message, PSTR(","));
-  strcat(message, geofenceHomeLon);
-
-  return sendSMS(smsSender, message);
+  return sendSMS(smsSender, F("Lockdown: Disabled"));
 }
 
 bool handleStatusReq(char* smsSender) {
@@ -2399,7 +2402,6 @@ void initEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_SAVED_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_SAVED_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_SAVED_12, "10.7869289");
-  EEPROM.put(GEOFENCERADIUS_CHAR_SAVED_7, "500");
   EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, "00");
   EEPROM.put(GEOFENCEEND_CHAR_SAVED_3, "00");
   EEPROM.put(KILLSWITCHENABLED_BOOL_SAVED_1, false);
