@@ -628,7 +628,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  char message[147];
+  char message[150];    // longest string: "FENCE WARNING!___Current:___google.com/search?q=-30.209830,-097.764757___Home:___google.com/search?q=-52.4322115,-097.7869289___Dir: W @ 0.0 kph_"
 
   if (follow)
     strcpy_P(message, PSTR("FOLLOW MODE"));
@@ -833,7 +833,7 @@ void checkSMSInput() {
 }
 
 bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) {
-  char message[137];
+  char message[163];        // longest string: "Lockdown Enabled. Try 'unlock' before updating fence or kill___Radius: 12500 feet___Home: google.com/search?q=-30.209794,-097.764715___thevantracker.com/h10_"
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
@@ -857,6 +857,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
+    strcpy_P(message, PSTR("\\\\nthevantracker.com/h7"));
 
     if (sendSMS(smsSender, message))
       deleteSMS(smsSlotNumber);
@@ -994,7 +995,7 @@ bool handleStatusReq(char* smsSender) {
   int8_t rssi;
   char rssiStr[4];
   char currentTimeStr[23];
-  char message[146];
+  char message[146];          // longest string: "Owner: 1235415141272___Lockdown: Disabled___Fence: enabled 00-00___Kill: Enabled 00-00___RSSI: 16___System Time: '21/07/19,02:52:06-28'_"
   char hour[3];
 
   char ownerPhoneNumber[15];
@@ -1106,7 +1107,7 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Disabled"));
   }
-  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable/disable"));
+  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable/disable\\\\nthevantracker.com/h9"));
 }
 
 bool handleBothReq(char* smsSender, char* smsValue) {
@@ -1114,7 +1115,7 @@ bool handleBothReq(char* smsSender, char* smsValue) {
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[69];
+  char message[95];
 
   bool validMessage = false;
   bool killSwitchEnabled;
@@ -1163,13 +1164,25 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
       strcat_P(message, PSTR("kill"));
 #endif
     }
-    strcat_P(message, PSTR("' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)"));
+
+    strcat_P(message, PSTR("' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nthevantracker.com/h"));
+
+    if (alternateSMSOnFailure) {
+      strcat_P(message, PSTR("5"));
+    }
+    else {
+#ifdef DOOR_OPTION
+      strcat_P(message, PSTR("4"));
+#else
+      strcat_P(message, PSTR("3"));
+#endif
+    }
     return sendSMS(smsSender, message);
   }
 }
 
 bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[139] = {0};
+  char message[139] = {0};    // longest string "Fence: Disabled___Hours: 23-23 (always on)___Radius: 11500 feet___Home: google.com/search?q=-52.4322115,-110.7869289_"
 
   bool validMessage = false;
   bool geofenceEnabled;
@@ -1237,13 +1250,13 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 0 21 (12am-9pm)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)\\\\nthevantracker.com/h1"));
     }
   }
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[118] = {0};
+  char message[144] = {0};
   char ownerPhoneNumber[15] = {0};
 
   strcpy_P(message, PSTR("Owner: "));
@@ -1267,7 +1280,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number"));
+    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number\\\\nthevantracker.com/h10"));
   }
 
   return sendSMS(smsSender, message);
@@ -1301,9 +1314,9 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 
 bool handleCommandsReq(char* smsSender) {
 #ifdef DOOR_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\nthevantracker.com/h6"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\nthevantracker.com/h6"));
 #endif
 }
 
@@ -1913,12 +1926,12 @@ bool sendSMS(char* send_to, char* message) {
   // message identifier                       ,\"f\":                 7
   // from twilio phone number (USA #)         \"19998887777\"         15
   // message identifier                       ,\"m\":                 7
-  // the message (140) plus \" twice          \"...\"                 154       // we have to turn every 1 newline char '\n' into 3 chars "\\\\n" so we need a little more than 144 chars
+  // the message (160) plus \" twice          \"...\"                 174       // we have to turn every 1 newline char '\n' into 3 chars "\\\\n" so we need a little more than 144 chars
   // topic identifier                         }","t":                 7
   // topic plus close brace                   "TWIL"}                 7
   // null-terminator for C string             \0                      1
 
-  char hologramSMSString[243];
+  char hologramSMSString[263];
   int16_t hologramSMSStringLength;
 
   char devKey[9];
