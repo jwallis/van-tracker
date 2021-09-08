@@ -58,7 +58,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 2.3")
+#define VT_VERSION        F("VT 3.0")
 
 // Which VT model is this?
 //#define DOOR_ONLY_OPTION               // uses "door" in all interactions, i.e. commands incoming from user as well as responses
@@ -176,12 +176,6 @@ volatile bool g_volatileKillSwitchActive = false;
 volatile bool g_volatileKillSwitchDebug = false;
 volatile bool g_volatileKillSwitchInitialized = false;
 volatile bool g_volatileStartAttemptedWhileKillSwitchActive = false;
-
-//int freeRam () {
-//  extern int __heap_start, *__brkval;
-//  int v;
-//  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
-//}
 
 void setup() {
 
@@ -652,7 +646,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for location updates, 'follow disable' to stop"));
+    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for location updates, 'follow disable' to stop\\\\n\\\\nthevantracker.com/h9"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -833,7 +827,7 @@ void checkSMSInput() {
 }
 
 bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) {
-  char message[163];        // longest string: "Lockdown Enabled. Try 'unlock' before updating fence or kill___Radius: 12500 feet___Home: google.com/search?q=-30.209794,-097.764715___thevantracker.com/h10_"
+  char message[166];        // longest string: "Lockdown Enabled. Try 'unlock' before updating fence or kill___Radius: 12500 feet___Home: google.com/search?q=-30.209794,-097.764715______thevantracker.com/h10_"
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
@@ -857,7 +851,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
-    strcpy_P(message, PSTR("\\\\nthevantracker.com/h7"));
+    strcat_P(message, PSTR("\\\\n\\\\nthevantracker.com/h7"));
 
     if (sendSMS(smsSender, message))
       deleteSMS(smsSlotNumber);
@@ -1107,7 +1101,7 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Disabled"));
   }
-  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable/disable\\\\nthevantracker.com/h9"));
+  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable\\\\ndisable\\\\n\\\\nthevantracker.com/h9"));
 }
 
 bool handleBothReq(char* smsSender, char* smsValue) {
@@ -1115,7 +1109,7 @@ bool handleBothReq(char* smsSender, char* smsValue) {
 }
 
 bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
-  char message[95];
+  char message[100];
 
   bool validMessage = false;
   bool killSwitchEnabled;
@@ -1165,7 +1159,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 #endif
     }
 
-    strcat_P(message, PSTR("' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nthevantracker.com/h"));
+    strcat_P(message, PSTR("' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\n\\\\nthevantracker.com/h"));
 
     if (alternateSMSOnFailure) {
       strcat_P(message, PSTR("5"));
@@ -1250,13 +1244,13 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable/disable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)\\\\nthevantracker.com/h1"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)\\\\n\\\\nthevantracker.com/h2"));
     }
   }
 }
 
 bool handleOwnerReq(char* smsSender, char* smsValue) {
-  char message[144] = {0};
+  char message[147] = {0};
   char ownerPhoneNumber[15] = {0};
 
   strcpy_P(message, PSTR("Owner: "));
@@ -1280,7 +1274,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number\\\\nthevantracker.com/h10"));
+    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number\\\\n\\\\nthevantracker.com/h10"));
   }
 
   return sendSMS(smsSender, message);
@@ -1314,9 +1308,9 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 
 bool handleCommandsReq(char* smsSender) {
 #ifdef DOOR_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\nthevantracker.com/h6"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nthevantracker.com/help"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock/unlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\nthevantracker.com/h6"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nthevantracker.com/help"));
 #endif
 }
 
@@ -1964,7 +1958,7 @@ bool sendSMS(char* send_to, char* message) {
 
   int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
 
-  debugPrint(F("?"));
+  debugPrint(F("? "));
   debugPrintln(successCode);
 
   if (successCode == 0) {
@@ -1982,7 +1976,7 @@ bool sendSMS(char* send_to, char* message) {
 }
 
 bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
-  char message[141];  // yeah this sucks, but it's better than having all those strings stored in SRAM as globals
+  char message[161];  // yeah this sucks, but it's better than having all those strings stored in SRAM as globals
   strcpy_P(message, (const char*)messageInProgmem);
   return sendSMS(send_to, message);
 }
