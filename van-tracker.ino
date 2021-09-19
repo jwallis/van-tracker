@@ -319,7 +319,7 @@ void watchDogForReset() {
   
     // if "follow mode" is on, keep trying to communicate with owner!
     if (follow) {
-      delay(60000);
+      delay(60000);   //data type = unsigned long
       resetSystem();
       return;
     }
@@ -520,7 +520,7 @@ void watchDogForKillSwitch() {
 #ifdef DOOR_OPTION
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened!"));
 #else
-    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted!"));
+    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted or door opened!"));
 #endif
     g_volatileStartAttemptedWhileKillSwitchActive = false;
   }
@@ -622,7 +622,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
   EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-  char message[150];    // longest string: "FENCE WARNING!___Current:___google.com/search?q=-30.209830,-097.764757___Home:___google.com/search?q=-52.4322115,-097.7869289___Dir: W @ 0.0 kph_"
+  char message[150];    // longest string: "FENCE WARNING!___Current:___google.com/search?q=-30.209830,-097.764757___Home:___google.com/search?q=-52.4322115,-097.7869289___Dir: NW @ 0.0 kph_"
 
   if (follow)
     strcpy_P(message, PSTR("FOLLOW MODE"));
@@ -646,7 +646,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for location updates, 'follow disable' to stop\\\\n\\\\nthevantracker.com/h9"));
+    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for location updates, 'follow disable' to stop\\\\n\\\\nTheVanTracker.com/h9"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -804,9 +804,13 @@ void checkSMSInput() {
 
     // "contains" match
     if (strstr_P(smsValue, PSTR("poweron"))) {
-      // lazy, but that's ok, we don't need error handling here, plus trying to save space
-      EEPROM.put(POWERON_BOOL_1, strstr_P(smsValue, PSTR("enab")));
-      sendSMS(smsSender, F("Ok"));
+      if (strstr_P(smsValue, PSTR("ena"))) {
+        EEPROM.put(POWERON_BOOL_1, true);
+        sendSMS(smsSender, F("Ok"));
+      } else if (strstr_P(smsValue, PSTR("disa"))) {
+        EEPROM.put(POWERON_BOOL_1, false);
+        sendSMS(smsSender, F("Ok"));
+      }
       deleteSMS(smsSlotNumber);
       continue;
     }
@@ -827,7 +831,7 @@ void checkSMSInput() {
 }
 
 bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) {
-  char message[166];        // longest string: "Lockdown Enabled. Try 'unlock' before updating fence or kill___Radius: 12500 feet___Home: google.com/search?q=-30.209794,-097.764715______thevantracker.com/h10_"
+  char message[166];        // longest string: "Lockdown Enabled. Try 'unlock' before updating fence or kill___Radius: 12500 feet___Home: google.com/search?q=-30.209794,-097.764715______TheVanTracker.com/h10_"
   char geofenceHomeLat[12];
   char geofenceHomeLon[12];
   char geofenceRadius[7];
@@ -851,7 +855,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
-    strcat_P(message, PSTR("\\\\n\\\\nthevantracker.com/h7"));
+    strcat_P(message, PSTR("\\\\n\\\\nTheVanTracker.com/h7"));
 
     if (sendSMS(smsSender, message))
       deleteSMS(smsSlotNumber);
@@ -1079,11 +1083,11 @@ bool handleLocReq(char* smsSender) {
 bool handleUseSMSReq(char* smsSender, char* smsValue) {
   if (strstr_P(smsValue, PSTR("plain"))) {
     EEPROM.put(USEPLAINSMS_BOOL_1, true);
-    sendSMS(smsSender, F("OK"));
+    sendSMS(smsSender, F("Ok"));
   }
   if (strstr_P(smsValue, PSTR("ip"))) {
     EEPROM.put(USEPLAINSMS_BOOL_1, false);
-    sendSMS(smsSender, F("OK"));
+    sendSMS(smsSender, F("Ok"));
   }
 }
 
@@ -1101,7 +1105,7 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Disabled"));
   }
-  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable\\\\ndisable\\\\n\\\\nthevantracker.com/h9"));
+  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable\\\\ndisable\\\\n\\\\nTheVanTracker.com/h9"));
 }
 
 bool handleBothReq(char* smsSender, char* smsValue) {
@@ -1159,7 +1163,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 #endif
     }
 
-    strcat_P(message, PSTR("' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\n\\\\nthevantracker.com/h"));
+    strcat_P(message, PSTR("' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\n\\\\nTheVanTracker.com/h"));
 
     if (alternateSMSOnFailure) {
       strcat_P(message, PSTR("5"));
@@ -1244,7 +1248,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)\\\\n\\\\nthevantracker.com/h2"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)\\\\n\\\\nTheVanTracker.com/h2"));
     }
   }
 }
@@ -1274,7 +1278,7 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number\\\\n\\\\nthevantracker.com/h10"));
+    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number\\\\n\\\\nTheVanTracker.com/h10"));
   }
 
   return sendSMS(smsSender, message);
@@ -1308,9 +1312,9 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 
 bool handleCommandsReq(char* smsSender) {
 #ifdef DOOR_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nthevantracker.com/help"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nTheVanTracker.com/help"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nthevantracker.com/help"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nTheVanTracker.com/help"));
 #endif
 }
 
@@ -2489,9 +2493,9 @@ void debugPrintln(String s) {
   Serial.println(s);
 #endif
 }
-void debugPrintln(uint8_t s) {
+void debugPrintln(int i) {
 #if defined VAN_TEST || defined NEW_HARDWARE_ONLY || defined SIMCOM_SERIAL || defined UPGRADING_HARDWARE_ONLY
-  Serial.println(s);
+  Serial.println(i);
 #endif
 }
 
