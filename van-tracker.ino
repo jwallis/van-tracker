@@ -685,9 +685,8 @@ void checkSMSInput() {
     fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
     toLower(smsValue);
 
-    debugPrint(F("IN : "));
-    debugPrintln(smsValue);
     cleanString(smsValue, ' ');
+    debugPrint(F("IN : "));
     debugPrintln(smsValue);
 
     // exact match
