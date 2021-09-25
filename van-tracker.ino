@@ -58,14 +58,15 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.0")
+#define VT_VERSION        F("VT 3.1")
 
-// Which VT model is this?
-//#define DOOR_ONLY_OPTION               // uses "door" in all interactions, i.e. commands incoming from user as well as responses
-//#define KILL_ONLY_OPTION               // uses "kill" in all interactions, i.e. commands incoming from user as well as responses
+//    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
+//    Which VT model is this?
 #define KILL_AND_DOOR_OPTION           // uses "kill" in all interactions, but also has door alerts
+//#define DOOR_ONLY_OPTION               // uses "door" in all interactions, i.e. commands incoming from user as well as responses
 
-// ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME.  Choose what version you want to upload/execute on your board.
+//    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
+//    Choose what version you want to upload/execute on your board.
 //#define VAN_PROD                  // NO debug output
 #define VAN_TEST                  // Includes debug output to Serial Monitor
 //#define SIMCOM_SERIAL             // Only for interacting with SimCom module using AT commands
@@ -79,16 +80,10 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 // make sure our #defines are set up correctly
-#if defined KILL_ONLY_OPTION && defined DOOR_ONLY_OPTION
-  "at most 1 VT model can be defined"
-#endif
-#if defined KILL_ONLY_OPTION && defined KILL_AND_DOOR_OPTION
-  "at most 1 VT model can be defined"
-#endif
 #if defined DOOR_ONLY_OPTION && defined KILL_AND_DOOR_OPTION
   "at most 1 VT model can be defined"
 #endif
-#if !defined KILL_ONLY_OPTION && !defined DOOR_ONLY_OPTION && !defined KILL_AND_DOOR_OPTION
+#if !defined DOOR_ONLY_OPTION && !defined KILL_AND_DOOR_OPTION
   "at least 1 VT model must be defined"
 #endif
 
@@ -517,7 +512,7 @@ void watchDogForKillSwitch() {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
     // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened!"));
 #else
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted or door opened!"));
@@ -721,7 +716,7 @@ void checkSMSInput() {
     } 
 
     // "contains" match
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
     if (strstr_P(smsValue, PSTR("door"))) {
 #else
     if (strstr_P(smsValue, PSTR("kill"))) {
@@ -844,7 +839,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
     
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
     strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or door\\\\nRadius: "));
 #else
     strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or kill\\\\nRadius: "));
@@ -1029,7 +1024,7 @@ bool handleStatusReq(char* smsSender) {
       strcat_P(message, PSTR("\\\\nFence: Disabled"));
   
     if (kill) {
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
       strcat_P(message, PSTR("\\\\nDoor: Enabled "));
 #else
       strcat_P(message, PSTR("\\\\nKill: Enabled "));
@@ -1042,7 +1037,7 @@ bool handleStatusReq(char* smsSender) {
       strcat(message, hour);
     }
     else
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
       strcat_P(message, PSTR("\\\\nDoor: Disabled"));
 #else
       strcat_P(message, PSTR("\\\\nKill: Disabled"));
@@ -1124,7 +1119,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
   validMessage = setEnableAndHours(smsValue, KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3, killSwitchEnabled, killSwitchStart, killSwitchEnd);
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
     if (killSwitchEnabled)
       strcpy_P(message, PSTR("Door: Enabled\\\\nHours: "));
     else
@@ -1155,7 +1150,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
       strcat_P(message, PSTR("both"));
     }
     else {
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
       strcat_P(message, PSTR("door"));
 #else
       strcat_P(message, PSTR("kill"));
@@ -1168,7 +1163,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
       strcat_P(message, PSTR("5"));
     }
     else {
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
       strcat_P(message, PSTR("4"));
 #else
       strcat_P(message, PSTR("3"));
@@ -1310,7 +1305,7 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
-#ifdef DOOR_OPTION
+#ifdef DOOR_ONLY_OPTION
   return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nTheVanTracker.com/help"));
 #else
   return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nTheVanTracker.com/help"));
@@ -2262,7 +2257,7 @@ void starterISR() {
   if (!g_volatileKillSwitchInitialized)
     return;
 
-  _delay_ms(500);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
+  _delay_ms(400);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
 
   // The resistor (hardware) should prevent little spikes from making the ISR fire all the time
   // but if that's happening, this will show us on the debug output
