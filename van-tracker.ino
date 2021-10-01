@@ -96,12 +96,14 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 
-#define STARTER_INTERRUPT_ID 0   // interrupt 0 == pin 2.  I hate that.
-#define STARTER_INTERRUPT_PIN 2  // interrupt 0 == pin 2.  I hate that.
-#define SIMCOM_RX_PIN 3
-#define SIMCOM_TX_PIN 4
+#define STARTER_INTERRUPT_ID 0    // interrupt 0 == pin 2.  I hate that.
+#define STARTER_INTERRUPT_PIN 2   // interrupt 0 == pin 2.  I hate that.
+#define DOOR_INTERRUPT_ID 1       // interrupt 1 == pin 3.  I hate that.
+#define DOOR_INTERRUPT_PIN 3      // interrupt 1 == pin 3.  I hate that.
+#define SIMCOM_RX_PIN 5
+#define SIMCOM_TX_PIN 6
 
-#define KILL_SWITCH_RELAY_PIN 5
+#define KILL_SWITCH_RELAY_PIN 4
 #define DEBUG_PIN 13
 
 // QUOTES ARE PART OF THE STRING: "20/01/31,17:03:01-20"
@@ -167,10 +169,14 @@ int8_t g_geofenceWarningCount = 0;
 bool g_geofenceWarningCountMessageSent = false;
 int8_t g_followMessageCount = 0;
 
-volatile bool g_volatileKillSwitchActive = false;
-volatile bool g_volatileKillSwitchDebug = false;
-volatile bool g_volatileKillSwitchInitialized = false;
-volatile bool g_volatileStartAttemptedWhileKillSwitchActive = false;
+volatile bool g_v_killSwitchAndDoorAlertActive = false;
+volatile bool g_v_killSwitchAndDoorAlertInitialized = false;
+
+volatile bool g_v_killSwitchInterruptDebug = false;
+volatile bool g_v_startAttemptedWhileKillSwitchActive = false;
+
+volatile bool g_v_doorInterruptDebug = false;
+volatile bool g_v_doorOpenedWhileDoorAlertActive = false;
 
 void setup() {
 
@@ -210,10 +216,9 @@ void setup() {
   handleSerialInput("S");
 #endif
   
-  // if the kill switch is Enabled and Always On, we don't care about the clock, activate it asap
+  // Activate kill switch ASAP if Enabled and Always On
   if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
-    setKillSwitchPins(true);
-    g_volatileKillSwitchInitialized = true;
+    setKillSwitchAndDoorAlert(true);
   }
 
   setupSimCom();
@@ -223,13 +228,11 @@ void setup() {
   updateClock();
   updateLastResetTime();
   
-  setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
-  g_volatileKillSwitchInitialized = true;
+  setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
-  // This is in case we're tied to the door open circuit:
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
-  if (g_volatileKillSwitchActive && !digitalRead(STARTER_INTERRUPT_PIN))
-    g_volatileStartAttemptedWhileKillSwitchActive = true;
+  if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
+    g_v_doorOpenedWhileDoorAlertActive = true;
 
 
   char ownerPhoneNumber[15];
@@ -500,24 +503,32 @@ void watchDogForTurnOffGPS() {
 }
 
 void watchDogForKillSwitch() {
-  setKillSwitchPins(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+  setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
-  if (g_volatileKillSwitchDebug) {
-      debugPrintln(F("I"));
-      g_volatileKillSwitchDebug = false;
+  if (g_v_doorInterruptDebug) {
+      debugPrintln(F("iD"));
+      g_v_doorInterruptDebug = false;
   }
 
-  if (g_volatileStartAttemptedWhileKillSwitchActive) {
+  if (g_v_killSwitchInterruptDebug) {
+      debugPrintln(F("iK"));
+      g_v_killSwitchInterruptDebug = false;
+  }
+
+  if (g_v_doorOpenedWhileDoorAlertActive) {
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
 
-    // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
-#ifdef DOOR_ONLY_OPTION
     sendSMS(ownerPhoneNumber, F("WARNING!\\\\nDoor opened!"));
-#else
-    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted or door opened!"));
-#endif
-    g_volatileStartAttemptedWhileKillSwitchActive = false;
+    g_v_doorOpenedWhileDoorAlertActive = false;  // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
+  }
+
+  if (g_v_startAttemptedWhileKillSwitchActive) {
+    char ownerPhoneNumber[15];
+    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+
+    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted!"));
+    g_v_startAttemptedWhileKillSwitchActive = false;  // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
   }
 }
 
@@ -2247,6 +2258,8 @@ void flushSimCom() {
 void pinSetup() {
   pinMode(STARTER_INTERRUPT_PIN, INPUT_PULLUP);                 // when starter is on, PIN is LOW
   attachInterrupt(STARTER_INTERRUPT_ID, starterISR, FALLING);   // when starter is on, PIN is LOW
+  pinMode(DOOR_INTERRUPT_PIN, INPUT_PULLUP);                    // when starter is on, PIN is LOW
+  attachInterrupt(DOOR_INTERRUPT_ID, doorISR, FALLING);         // when starter is on, PIN is LOW
   
   pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
   pinMode(DEBUG_PIN, OUTPUT);
@@ -2254,22 +2267,39 @@ void pinSetup() {
 
 void starterISR() {
 
-  if (!g_volatileKillSwitchInitialized)
+  // The resistor (hardware) should prevent little spikes from making the ISR fire all the time
+  // but if that's happening, this will show us on the debug output
+  g_v_killSwitchInterruptDebug = true;
+
+  if (!g_v_killSwitchAndDoorAlertInitialized)
     return;
 
   _delay_ms(400);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
 
-  // The resistor (hardware) should prevent little spikes from making the ISR fire all the time
-  // but if that's happening, this will show us on the debug output
-  g_volatileKillSwitchDebug = true;
-
   // when starter is on, PIN is LOW
-  if (g_volatileKillSwitchActive && !digitalRead(STARTER_INTERRUPT_PIN))
-    g_volatileStartAttemptedWhileKillSwitchActive = true;
+  if (g_v_killSwitchAndDoorAlertActive && !digitalRead(STARTER_INTERRUPT_PIN))
+    g_v_startAttemptedWhileKillSwitchActive = true;
 }
 
-void setKillSwitchPins(bool tf) {
-  g_volatileKillSwitchActive = tf;
+void doorISR() {
+
+  // There shouldn't be little spikes making the ISR fire all the time
+  // but if that's happening, this will show us on the debug output
+  g_v_doorInterruptDebug = true;
+
+  if (!g_v_killSwitchAndDoorAlertInitialized)
+    return;
+
+  _delay_ms(400);  // shouldn't be necessary, but no one can open a door and close it in 0.4 seconds anyway
+
+  // when starter is on, PIN is LOW
+  if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
+    g_v_doorOpenedWhileDoorAlertActive = true;
+}
+
+void setKillSwitchAndDoorAlert(bool tf) {
+  g_v_killSwitchAndDoorAlertInitialized = true;
+  g_v_killSwitchAndDoorAlertActive = tf;
   digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
 }
 
