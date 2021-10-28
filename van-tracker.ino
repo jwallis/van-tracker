@@ -175,6 +175,8 @@ int16_t g_lastGPSConnAttemptTime = -1;
 int16_t g_lastRestartTime = -1;
 int8_t g_lastGeofenceWarningMinute = -1;
 
+int16_t g_pauseStartedAt = -1;
+
 int8_t g_geofenceWarningCount = 0;
 bool g_geofenceWarningCountMessageSent = false;
 int8_t g_followMessageCount = 0;
@@ -268,6 +270,7 @@ void loop() {
     watchDogForKillSwitch();
     watchDogForGeofence();
     watchDogForTurnOffGPS();
+    watchDogForUnpause();
     watchDogForReset();
   }
   // 1 is very bad - could not connect to SimCom module
@@ -287,7 +290,7 @@ void loop() {
     }
     resetSystem();
   }
-  // > 1 is also bad - could not connect to cellular network
+  // > 1 is also bad - could not connect to cellular network, but we might have a valid clock
   if (g_SimComConnectionStatus > 1) {
     debugBlink(3,g_SimComConnectionStatus);
     delay(2000);
@@ -295,6 +298,7 @@ void loop() {
     debugBlink(0,2);
     watchDogForKillSwitch();
     watchDogForTurnOffGPS();
+    watchDogForUnpause();
     watchDogForReset();
   }
 
@@ -508,7 +512,27 @@ void watchDogForTurnOffGPS() {
   // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:25am (which == 25)
   if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime < 1420) {
     setGPS(false);
-  }  
+  }
+}
+
+void watchDogForUnpause() {
+  // unpause after 15 minutes
+
+  // if no pause is in effect, just return
+  if (g_pauseStartedAt = -1) {
+    return;
+  }
+
+  int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+
+  // case 1 example: g_pauseStartedAt = 1:10pm, current = 1:30pm
+  if (g_pauseStartedAt <= currentTime && currentTime - g_pauseStartedAt > 15) {
+    g_pauseStartedAt = -1;
+  }
+  // case 2 example: g_pauseStartedAt = 11:55pm, current = 12:20am
+  if (g_pauseStartedAt > currentTime && g_pauseStartedAt - currentTime < 1425) {
+    g_pauseStartedAt = -1;
+  }
 }
 
 void watchDogForKillSwitch() {
@@ -582,6 +606,9 @@ void watchDogForGeofence() {
   char currentDir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   if (watchDogForFollow(currentLat, currentLon, currentSpeed, currentDir))
+    return;
+
+  if (g_pauseStartedAt >= 0)
     return;
 
   bool geofenceActive = isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3);
@@ -769,6 +796,13 @@ void checkSMSInput() {
     // "contains" match
     if (strstr_P(smsValue, PSTR("owner"))) {
       if (handleOwnerReq(smsSender, smsValue))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }
+
+    // "contains" match
+    if (strstr_P(smsValue, PSTR("paus"))) {
+      if (handlePauseReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -1296,6 +1330,11 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   }
 
   return sendSMS(smsSender, message);
+}
+
+bool handlePauseReq(char* smsSender) {
+  g_pauseStartedAt = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+  return sendSMS(smsSender, F("Paused for 15 minutes"));
 }
 
 void handleDevKeyReq(char* smsSender, char* smsValue) {
@@ -2311,8 +2350,13 @@ void doorISR() {
 
 void setKillSwitchAndDoorAlert(bool tf) {
   g_v_killSwitchAndDoorAlertInitialized = true;
-  g_v_killSwitchAndDoorAlertActive = tf;
-  digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
+
+  if (g_pauseStartedAt >= 0)
+    g_v_killSwitchAndDoorAlertActive = false;
+  else
+    g_v_killSwitchAndDoorAlertActive = tf;
+
+  digitalWrite(KILL_SWITCH_RELAY_PIN, g_v_killSwitchAndDoorAlertActive);
 }
 
 void setupSimCom() {
