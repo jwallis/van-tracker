@@ -335,7 +335,7 @@ void watchDogForReset() {
     g_SimComConnectionStatus = 2;
   }
 
-  // 0 is connected
+  // 0 is connected to cell network
   if (g_SimComConnectionStatus == 0) {
     // if it's been 120 minutes, restart
     if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 120) {
@@ -344,7 +344,7 @@ void watchDogForReset() {
     else if (g_lastRestartTime > currentTime && g_lastRestartTime - currentTime < 1320) {
       resetSystem();
     }
-  } // > 0 is not connected
+  } // > 0 is not connected to cell network
   else {
     // if it's been 30 minutes, restart
     if (g_lastRestartTime <= currentTime && currentTime - g_lastRestartTime > 30) {
@@ -493,7 +493,6 @@ void resetSystem() {
 
 void watchDogForTurnOffGPS() {
   // shut down GPS module after 20 minutes of inactivity to save power
-
 
   // if already off, return
   if (fona.GPSstatus() == 0) {
@@ -2268,11 +2267,14 @@ void flushSimCom() {
 void pinSetup() {
   pinMode(STARTER_INTERRUPT_PIN, INPUT_PULLUP);                 // when starter is on, PIN is LOW
   attachInterrupt(STARTER_INTERRUPT_ID, starterISR, FALLING);   // when starter is on, PIN is LOW
-  pinMode(DOOR_INTERRUPT_PIN, INPUT_PULLUP);                    // when starter is on, PIN is LOW
-  attachInterrupt(DOOR_INTERRUPT_ID, doorISR, FALLING);         // when starter is on, PIN is LOW
+  pinMode(DOOR_INTERRUPT_PIN, INPUT_PULLUP);                    // when door is open, PIN is LOW
+  attachInterrupt(DOOR_INTERRUPT_ID, doorISR, FALLING);         // when door is open, PIN is LOW
   
   pinMode(KILL_SWITCH_RELAY_PIN, OUTPUT);
+  digitalWrite(KILL_SWITCH_RELAY_PIN, LOW);
+
   pinMode(DEBUG_PIN, OUTPUT);
+  digitalWrite(DEBUG_PIN, LOW);
 }
 
 void starterISR() {
