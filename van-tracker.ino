@@ -68,7 +68,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.1")
+#define VT_VERSION        F("VT 3.2")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -176,6 +176,7 @@ int16_t g_lastRestartTime = -1;
 int8_t g_lastGeofenceWarningMinute = -1;
 
 int16_t g_pauseStartedAt = -1;
+int16_t g_pauseLengthInMinutes = -1;
 
 int8_t g_geofenceWarningCount = 0;
 bool g_geofenceWarningCountMessageSent = false;
@@ -267,10 +268,10 @@ void loop() {
     checkSMSInput();
 
     debugBlink(0,2);
+    watchDogForResume();
     watchDogForKillSwitch();
     watchDogForGeofence();
     watchDogForTurnOffGPS();
-    watchDogForUnpause();
     watchDogForReset();
   }
   // 1 is very bad - could not connect to SimCom module
@@ -296,9 +297,9 @@ void loop() {
     delay(2000);
 
     debugBlink(0,2);
+    watchDogForResume();
     watchDogForKillSwitch();
     watchDogForTurnOffGPS();
-    watchDogForUnpause();
     watchDogForReset();
   }
 
@@ -515,29 +516,31 @@ void watchDogForTurnOffGPS() {
   }
 }
 
-void watchDogForUnpause() {
-  // unpause after 15 minutes
+void watchDogForResume() {
+  // Resume after X minutes
+  // X = 15 by default
 
   // if no pause is in effect, just return
-  if (g_pauseStartedAt = -1) {
+  if (g_pauseStartedAt == -1) {
     return;
   }
 
   int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // case 1 example: g_pauseStartedAt = 1:10pm, current = 1:30pm
-  if (g_pauseStartedAt <= currentTime && currentTime - g_pauseStartedAt > 15) {
+  if (g_pauseStartedAt <= currentTime && currentTime - g_pauseStartedAt > g_pauseLengthInMinutes) {
     g_pauseStartedAt = -1;
+    return;
   }
   // case 2 example: g_pauseStartedAt = 11:55pm, current = 12:20am
-  if (g_pauseStartedAt > currentTime && g_pauseStartedAt - currentTime < 1425) {
+  if (g_pauseStartedAt > currentTime && g_pauseStartedAt - currentTime < (1440-g_pauseLengthInMinutes)) {
     g_pauseStartedAt = -1;
+    return;
   }
+  setKillSwitchAndDoorAlert(false);
 }
 
 void watchDogForKillSwitch() {
-  setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
-
   if (g_v_doorInterruptDebug) {
       debugPrintln(F("iD"));
       g_v_doorInterruptDebug = false;
@@ -547,6 +550,11 @@ void watchDogForKillSwitch() {
       debugPrintln(F("iK"));
       g_v_killSwitchInterruptDebug = false;
   }
+
+  if (g_pauseStartedAt >= 0)
+    return;
+
+  setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
   if (g_v_doorOpenedWhileDoorAlertActive) {
     char ownerPhoneNumber[15];
@@ -623,7 +631,7 @@ void watchDogForGeofence() {
   // If we've sent a geofence warning...
   if (g_lastGeofenceWarningMinute != -1) {
 
-    // ...only the next one after 15 minutes have passed.  User can use follow mode if she wants rapid updates.
+    // ...wait to send the next one after 15 minutes have passed.  User can use follow mode if she wants rapid updates.
 
     // There are 2 cases:
     // A) current minute > last query minute, example lastQuery = 10, current = 30
@@ -688,7 +696,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for location updates, 'follow disable' to stop\\\\n\\\\nTheVanTracker.com/h9"));
+    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for rapid location updates, 'follow disable' to stop"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -801,8 +809,15 @@ void checkSMSInput() {
     }
 
     // "contains" match
+    if (strstr_P(smsValue, PSTR("resum"))) {
+      if (handleResumeReq(smsSender))
+        deleteSMS(smsSlotNumber);
+      continue;
+    }
+
+    // "contains" match
     if (strstr_P(smsValue, PSTR("paus"))) {
-      if (handlePauseReq(smsSender))
+      if (handlePauseReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -903,8 +918,8 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
     strcat(message, geofenceHomeLat);
     strcat_P(message, PSTR(","));
     strcat(message, geofenceHomeLon);
-    strcat_P(message, PSTR("\\\\n\\\\nTheVanTracker.com/h7"));
 
+    sendSMS(smsSender, F("TheVanTracker.com/h7"));
     if (sendSMS(smsSender, message))
       deleteSMS(smsSlotNumber);
     return true;
@@ -1153,7 +1168,8 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Disabled"));
   }
-  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable\\\\ndisable\\\\n\\\\nTheVanTracker.com/h9"));
+  sendSMS(smsSender, F("TheVanTracker.com/h9"));
+  return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable\\\\ndisable"));
 }
 
 bool handleBothReq(char* smsSender, char* smsValue) {
@@ -1211,16 +1227,16 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 #endif
     }
 
-    strcat_P(message, PSTR("' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\n\\\\nTheVanTracker.com/h"));
+    strcat_P(message, PSTR("' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)"));
 
     if (alternateSMSOnFailure) {
-      strcat_P(message, PSTR("5"));
+      sendSMS(smsSender, F("TheVanTracker.com/h5"));
     }
     else {
 #ifdef DOOR_ONLY_OPTION
-      strcat_P(message, PSTR("4"));
+      sendSMS(smsSender, F("TheVanTracker.com/h4"));
 #else
-      strcat_P(message, PSTR("3"));
+      sendSMS(smsSender, F("TheVanTracker.com/h3"));
 #endif
     }
     return sendSMS(smsSender, message);
@@ -1296,7 +1312,8 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
       return true;
     }
     else {
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)\\\\n\\\\nTheVanTracker.com/h2"));
+      sendSMS(smsSender, F("TheVanTracker.com/h2"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
     }
   }
 }
@@ -1326,15 +1343,29 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
   else {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
-    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number\\\\n\\\\nTheVanTracker.com/h10"));
+    strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number"));
   }
 
+  sendSMS(smsSender, F("TheVanTracker.com/h10"));
   return sendSMS(smsSender, message);
 }
 
-bool handlePauseReq(char* smsSender) {
+bool handlePauseReq(char* smsSender, char* smsValue) {
+  char pauseLengthInMinutes[4] = {};
+  
+  if (getNumberFromString(smsValue, pauseLengthInMinutes, 4)) {
+    g_pauseLengthInMinutes = atoi(pauseLengthInMinutes);
+  } else {
+    g_pauseLengthInMinutes = 15;
+  }
+
   g_pauseStartedAt = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
-  return sendSMS(smsSender, F("Paused for 15 minutes"));
+  return sendSMS(smsSender, F("Paused"));
+}
+
+bool handleResumeReq(char* smsSender) {
+  g_pauseStartedAt = -1;
+  return sendSMS(smsSender, F("Resumed"));
 }
 
 void handleDevKeyReq(char* smsSender, char* smsValue) {
@@ -1364,10 +1395,11 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 }
 
 bool handleCommandsReq(char* smsSender) {
+  sendSMS(smsSender, F("TheVanTracker.com/help"));
 #ifdef DOOR_ONLY_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nTheVanTracker.com/help"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron\\\\n\\\\nTheVanTracker.com/help"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #endif
 }
 
@@ -2033,7 +2065,8 @@ bool sendSMS(char* send_to, char* message) {
 }
 
 bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem) {
-  char message[161];  // yeah this sucks, but it's better than having all those strings stored in SRAM as globals
+  // yeah this sucks, but it's better than having all those strings stored in SRAM as globals
+  char message[161];
   strcpy_P(message, (const char*)messageInProgmem);
   return sendSMS(send_to, message);
 }
@@ -2349,14 +2382,11 @@ void doorISR() {
 }
 
 void setKillSwitchAndDoorAlert(bool tf) {
+  debugPrint("setKill: ");
+  debugPrintln(tf);
   g_v_killSwitchAndDoorAlertInitialized = true;
-
-  if (g_pauseStartedAt >= 0)
-    g_v_killSwitchAndDoorAlertActive = false;
-  else
-    g_v_killSwitchAndDoorAlertActive = tf;
-
-  digitalWrite(KILL_SWITCH_RELAY_PIN, g_v_killSwitchAndDoorAlertActive);
+  g_v_killSwitchAndDoorAlertActive = tf;
+  digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
 }
 
 void setupSimCom() {
