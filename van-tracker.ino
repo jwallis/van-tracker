@@ -302,8 +302,6 @@ void loop() {
     watchDogForTurnOffGPS();
     watchDogForReset();
   }
-
-  delay(1000);
 }
 
 void watchDogForReset() {
@@ -2382,8 +2380,6 @@ void doorISR() {
 }
 
 void setKillSwitchAndDoorAlert(bool tf) {
-  debugPrint("setKill: ");
-  debugPrintln(tf);
   g_v_killSwitchAndDoorAlertInitialized = true;
   g_v_killSwitchAndDoorAlertActive = tf;
   digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
