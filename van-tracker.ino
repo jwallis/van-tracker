@@ -1074,41 +1074,46 @@ bool handleStatusReq(char* smsSender) {
   strcpy_P(message, PSTR("Owner: "));
   strcat(message, &ownerPhoneNumber[1]);  // strip + from phone number "+15559998888"
 
-  if (lockdown)
-    strcat_P(message, PSTR("\\\\nLockdown: Enabled"));
+  if (g_pauseStartedAt >= 0)
+    strcat_P(message, PSTR("\\\\nPaused"));
+
   else {
-    strcat_P(message, PSTR("\\\\nLockdown: Disabled"));
-
-    if (fence) {
-      strcat_P(message, PSTR("\\\\nFence: Enabled "));
-      EEPROM.get(GEOFENCESTART_CHAR_3, hour);
-      strcat(message, hour);
-      strcat_P(message, PSTR("-"));
-      EEPROM.get(GEOFENCEEND_CHAR_3, hour);
-      strcat(message, hour);
-    }
-    else
-      strcat_P(message, PSTR("\\\\nFence: Disabled"));
+    if (lockdown)
+      strcat_P(message, PSTR("\\\\nLockdown: Enabled"));
+    else {
+      strcat_P(message, PSTR("\\\\nLockdown: Disabled"));
   
-    if (kill) {
-#ifdef DOOR_ONLY_OPTION
-      strcat_P(message, PSTR("\\\\nDoor: Enabled "));
-#else
-      strcat_P(message, PSTR("\\\\nKill: Enabled "));
-#endif
-
-      EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
-      strcat(message, hour);
-      strcat_P(message, PSTR("-"));
-      EEPROM.get(KILLSWITCHEND_CHAR_3, hour);
-      strcat(message, hour);
+      if (fence) {
+        strcat_P(message, PSTR("\\\\nFence: Enabled "));
+        EEPROM.get(GEOFENCESTART_CHAR_3, hour);
+        strcat(message, hour);
+        strcat_P(message, PSTR("-"));
+        EEPROM.get(GEOFENCEEND_CHAR_3, hour);
+        strcat(message, hour);
+      }
+      else
+        strcat_P(message, PSTR("\\\\nFence: Disabled"));
+    
+      if (kill) {
+  #ifdef DOOR_ONLY_OPTION
+        strcat_P(message, PSTR("\\\\nDoor: Enabled "));
+  #else
+        strcat_P(message, PSTR("\\\\nKill: Enabled "));
+  #endif
+  
+        EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
+        strcat(message, hour);
+        strcat_P(message, PSTR("-"));
+        EEPROM.get(KILLSWITCHEND_CHAR_3, hour);
+        strcat(message, hour);
+      }
+      else
+  #ifdef DOOR_ONLY_OPTION
+        strcat_P(message, PSTR("\\\\nDoor: Disabled"));
+  #else
+        strcat_P(message, PSTR("\\\\nKill: Disabled"));
+  #endif
     }
-    else
-#ifdef DOOR_ONLY_OPTION
-      strcat_P(message, PSTR("\\\\nDoor: Disabled"));
-#else
-      strcat_P(message, PSTR("\\\\nKill: Disabled"));
-#endif
   }
 
   strcat_P(message, PSTR("\\\\nRSSI: "));
