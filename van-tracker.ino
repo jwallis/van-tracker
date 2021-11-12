@@ -68,7 +68,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.2")
+#define VT_VERSION        F("VT 3.1")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -77,8 +77,8 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Choose what version you want to upload/execute on your board.
-//#define VAN_PROD                  // NO debug output
-#define VAN_TEST                  // Includes debug output to Serial Monitor
+#define VAN_PROD                  // NO debug output
+//#define VAN_TEST                  // Includes debug output to Serial Monitor
 //#define SIMCOM_SERIAL             // Only for interacting with SimCom module using AT commands
 //#define NEW_HARDWARE_ONLY         // Initializes Arduino Nano's EEPROM and a new SimCom module
 //#define UPGRADING_HARDWARE_ONLY   // Initializes Arduino Nano's EEPROM
