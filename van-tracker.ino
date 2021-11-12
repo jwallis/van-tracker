@@ -437,14 +437,20 @@ void updateClock() {
     int8_t localHourInt;
     char localHourStr[3];
 
+    // SIM7000 keeps local time, SIM7500 keeps GMT!  That SUCKS!
     // add utc time + offset to get local time... with some caveats
-    if (gpsHourInt + tzOffsetInt > 23)
-      localHourInt = gpsHourInt + tzOffsetInt - 24;
+    if (fona.type() == SIM7000) {
+      if (gpsHourInt + tzOffsetInt > 23)
+        localHourInt = gpsHourInt + tzOffsetInt - 24;
+      else {
+        if (gpsHourInt + tzOffsetInt < 0)
+          localHourInt = gpsHourInt + tzOffsetInt + 24;
+        else
+          localHourInt = gpsHourInt + tzOffsetInt;
+      }
+    }  //SIM7500
     else {
-      if (gpsHourInt + tzOffsetInt < 0)
-        localHourInt = gpsHourInt + tzOffsetInt + 24;
-      else
-        localHourInt = gpsHourInt + tzOffsetInt;
+      localHourInt = gpsHourInt;
     }
 
     itoa(localHourInt, localHourStr, 10);
@@ -901,7 +907,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
   // check if lockdown is ENabled
   EEPROM.get(LOCKDOWNENABLED_BOOL_1, lockdownEnabled);  
 
-  if (lockdownEnabled) {
+  if (lockdownEnabled && !strstr_P(smsValue, PSTR("stat"))) {
     EEPROM.get(GEOFENCEHOMELAT_CHAR_12, geofenceHomeLat);
     EEPROM.get(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.get(GEOFENCERADIUS_CHAR_7, geofenceRadius);
