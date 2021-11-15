@@ -593,13 +593,13 @@ bool watchDogForFollow(char* currentLat, char* currentLon, char* currentSpeed, c
   sendGeofenceWarning(true, currentLat, currentLon, currentSpeed, currentDir);
 
   g_followMessageCount++;
-  if (g_followMessageCount > 30) {
+  if (g_followMessageCount > 60) {
     g_followMessageCount = 0;
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
 
     char ownerPhoneNumber[15];
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-    sendSMS(ownerPhoneNumber, F("Follow auto-disabled. Use 'follow enable' to re-enable"));  
+    sendSMS(ownerPhoneNumber, F("Follow auto-disabled. Send 'follow' to re-enable"));  
   }
   else {
     bool usePlainSMS = false;
@@ -700,7 +700,7 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
   if (g_lastGeofenceWarningMinute == -1 && !follow) {
-    sendSMS(ownerPhoneNumber, F("Use 'follow enable' for rapid location updates, 'follow disable' to stop"));
+    sendSMS(ownerPhoneNumber, F("Send 'follow' for rapid location updates, 'follow disable' to stop"));
   }
 
   g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
@@ -813,7 +813,7 @@ void checkSMSInput() {
     }
 
     // "contains" match
-    if (strstr_P(smsValue, PSTR("resum"))) {
+    if (strstr_P(smsValue, PSTR("resum")) || strstr_P(smsValue, PSTR("unpaus"))) {
       if (handleResumeReq(smsSender))
         deleteSMS(smsSlotNumber);
       continue;
@@ -1164,7 +1164,8 @@ bool handleUseSMSReq(char* smsSender, char* smsValue) {
 }
 
 bool handleFollowReq(char* smsSender, char* smsValue) {
-  if (strstr_P(smsValue, PSTR("enable"))) {
+  // if someone's car was just stolen, just plain "follow" is probably plenty to type
+  if (strstr_P(smsValue, PSTR("enable")) || strcmp_P(smsValue, PSTR("follow")) == 0) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
     g_followMessageCount = 0;
     return true;
@@ -1347,15 +1348,14 @@ bool handleOwnerReq(char* smsSender, char* smsValue) {
     EEPROM.put(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
   }
-
-  // just respond with current owner number
-  else {
+  else  // just respond with current owner number
+  {
     EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
     strcat(message, &ownerPhoneNumber[1]);
     strcat_P(message, PSTR("\\\\nTry 'owner set' plus:\\\\nphone number WITH country code, or omit number to use your phone's number"));
+    sendSMS(smsSender, F("TheVanTracker.com/h10"));
   }
 
-  sendSMS(smsSender, F("TheVanTracker.com/h10"));
   return sendSMS(smsSender, message);
 }
 
