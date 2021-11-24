@@ -68,7 +68,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.1")
+#define VT_VERSION        F("VT 3.1.1")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -190,6 +190,8 @@ volatile bool g_v_startAttemptedWhileKillSwitchActive = false;
 
 volatile bool g_v_doorInterruptDebug = false;
 volatile bool g_v_doorOpenedWhileDoorAlertActive = false;
+
+volatile bool g_v_currentlySendingSMS = false;
 
 void setup() {
 
@@ -1993,7 +1995,11 @@ bool sendSMS(char* send_to, char* message) {
   cleanMessage(usePlainSMS, message);
 
   if (usePlainSMS) {
-    if (fona.sendSMS(send_to, message)) {
+    g_v_currentlySendingSMS = true;
+    bool sentOK = fona.sendSMS(send_to, message);
+    g_v_currentlySendingSMS = false;
+
+    if (sentOK) {
       debugBlink(1,6);
       updateLastResetTime();
       g_totalFailedSendSMSAttempts = 0;   
@@ -2054,7 +2060,9 @@ bool sendSMS(char* send_to, char* message) {
   debugPrintln(message);
   debugPrintln(hologramSMSString);
 
+  g_v_currentlySendingSMS = true;
   int8_t successCode = fona.ConnectAndSendToHologram(SERVER_NAME, SERVER_PORT, hologramSMSString, hologramSMSStringLength);
+  g_v_currentlySendingSMS = false;
 
   debugPrint(F("? "));
   debugPrintln(successCode);
@@ -2364,13 +2372,26 @@ void starterISR() {
   // but if that's happening, this will show us on the debug output
   g_v_killSwitchInterruptDebug = true;
 
+  // If either door-open or start-attempt alert has already been triggered, let's just make sure it goes out and not interrupt whatever is going on
+  if (g_v_startAttemptedWhileKillSwitchActive || g_v_doorOpenedWhileDoorAlertActive)
+    return;
+
+  // If we're currently sending an SMS, don't screw up the SMS.
+  //    case 1: we're sending "Door open!" or "Start attempted!".  We REALLY want that to be successful, and sending the other alert doesn't add much value.
+  //    case 2: we're sending a response to the owner.  Odds are they're standing next to their van, it's not being stolen, so let's just be sure to respond successfully.
+  if (g_v_currentlySendingSMS)
+    return;
+
   if (!g_v_killSwitchAndDoorAlertInitialized)
+    return;
+
+  if (!g_v_killSwitchAndDoorAlertActive)
     return;
 
   _delay_ms(400);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
 
   // when starter is on, PIN is LOW
-  if (g_v_killSwitchAndDoorAlertActive && !digitalRead(STARTER_INTERRUPT_PIN))
+  if (!digitalRead(STARTER_INTERRUPT_PIN))
     g_v_startAttemptedWhileKillSwitchActive = true;
 }
 
@@ -2380,13 +2401,26 @@ void doorISR() {
   // but if that's happening, this will show us on the debug output
   g_v_doorInterruptDebug = true;
 
+  // If either door-open or start-attempt alert has already been triggered, let's just make sure it goes out and not interrupt whatever is going on
+  if (g_v_startAttemptedWhileKillSwitchActive || g_v_doorOpenedWhileDoorAlertActive)
+    return;
+
+  // If we're currently sending an SMS, don't screw up the SMS.
+  //    case 1: we're sending "Door open!" or "Start attempted!".  We REALLY want that to be successful, and sending the other alert doesn't add much value.
+  //    case 2: we're sending a response to the owner.  Odds are they're standing next to their van, it's not being stolen, so let's just be sure to respond successfully.
+  if (g_v_currentlySendingSMS)
+    return;
+
   if (!g_v_killSwitchAndDoorAlertInitialized)
+    return;
+
+  if (!g_v_killSwitchAndDoorAlertActive)
     return;
 
   _delay_ms(400);  // shouldn't be necessary, but no one can open a door and close it in 0.4 seconds anyway
 
   // when starter is on, PIN is LOW
-  if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
+  if (!digitalRead(DOOR_INTERRUPT_PIN))
     g_v_doorOpenedWhileDoorAlertActive = true;
 }
 
