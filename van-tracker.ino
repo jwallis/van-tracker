@@ -719,9 +719,12 @@ void checkSMSInput() {
   g_lastGPSConnAttemptWorked = true;
 
   // Ugh more globals :(
-  // If they send ANY message, reset the geofence warnings so they start sending again
+  // If they send ANY message, if we've auto-disabled geofence warnings, reset the geofence warnings so they start sending again
   g_geofenceWarningCount = 0;
   g_geofenceWarningCountMessageSent = false;
+
+  // Let's DON'T do this.  If they're trying to track their van, sending extra messages is annoying, plus a warning will be sent soon anyway
+  // g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
 
   char smsSender[15];
   char smsValue[51];
