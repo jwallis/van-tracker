@@ -68,7 +68,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.1.1")
+#define VT_VERSION        F("VT 3.2.0")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -1065,7 +1065,7 @@ bool handleStatusReq(char* smsSender) {
   int8_t rssi;
   char rssiStr[4];
   char currentTimeStr[23];
-  char message[146];          // longest string: "Owner: 1235415141272___Lockdown: Disabled___Fence: enabled 00-00___Kill: Enabled 00-00___RSSI: 16___System Time: '21/07/19,02:52:06-28'_"
+  char message[148];          // longest string: "Owner: 1235415141272___Lockdown: Disabled___Fence: enabled 00-00___Kill: Enabled 00-00___Signal: 16___System Time: '21/07/19,02:52:06-28'_"
   char hour[3];
 
   char ownerPhoneNumber[15];
@@ -1127,7 +1127,7 @@ bool handleStatusReq(char* smsSender) {
     }
   }
 
-  strcat_P(message, PSTR("\\\\nRSSI: "));
+  strcat_P(message, PSTR("\\\\nSignal: "));
   strcat(message, rssiStr);
   strcat_P(message, PSTR("\\\\nSystem Time: "));
   strcat(message, currentTimeStr);
