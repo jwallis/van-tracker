@@ -17,6 +17,7 @@ Basic info codes (0 longs followed by THIS MANY shorts):
   4 = after powering on, Arduino successfully connected to SimCom chip
   5 = after powering on, Arduino trying to connect to SimCom
   6 = trying to connect to cell network
+  7 = trying to connect to GPS
 
 Event codes (1 long followed by THIS MANY shorts).  Notice odd numbers are bad, even numbers ok:
   1  = not used (see below for error codes in failure to send SMS)
@@ -68,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.1.1 Aux")
+#define VT_VERSION        F("VT 3.1.2 Aux")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -543,6 +544,8 @@ void watchDogForResume() {
     g_pauseStartedAt = -1;
     return;
   }
+
+  // we're still paused, don't send alerts
   setDoorAlert(false);
 }
 
@@ -1551,7 +1554,8 @@ bool setGPS(bool tf) {
       g_lastGPSConnAttemptWorked = true;
       return true;
     }
-    delay(4000);
+    debugBlink(0,7);
+    delay(1000);
   }
 
   // no fix, give up
