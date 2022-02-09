@@ -68,7 +68,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.1.1")
+#define VT_VERSION        F("VT 3.1.1 Aux")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -231,9 +231,9 @@ void setup() {
   handleSerialInput("S");
 #endif
   
-  // Activate kill switch ASAP if Enabled and Always On
-  if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
-    setKillSwitchAndDoorAlert(true);
+  // Activate door alert ASAP if Enabled and Always On
+  if (isAlwaysOn(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3)) {
+    setDoorAlert(true);
   }
 
   setupSimCom();
@@ -243,7 +243,7 @@ void setup() {
   updateClock();
   updateLastResetTime();
   
-  setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+  setDoorAlert(isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3));
 
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
   if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
@@ -543,7 +543,7 @@ void watchDogForResume() {
     g_pauseStartedAt = -1;
     return;
   }
-  setKillSwitchAndDoorAlert(false);
+  setDoorAlert(false);
 }
 
 void watchDogForKillSwitch() {
@@ -557,10 +557,12 @@ void watchDogForKillSwitch() {
       g_v_killSwitchInterruptDebug = false;
   }
 
+  setKillSwitch(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+
   if (g_pauseStartedAt >= 0)
     return;
 
-  setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+  setDoorAlert(isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3));
 
   if (g_v_doorOpenedWhileDoorAlertActive) {
     char ownerPhoneNumber[15];
@@ -783,7 +785,7 @@ void checkSMSInput() {
 #ifdef DOOR_ONLY_OPTION
     if (strstr_P(smsValue, PSTR("door"))) {
 #else
-    if (strstr_P(smsValue, PSTR("kill"))) {
+    if (strstr_P(smsValue, PSTR("aux"))) {
 #endif
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
@@ -920,7 +922,7 @@ bool checkLockdownStatus(char* smsSender, char* smsValue, int8_t smsSlotNumber) 
 #ifdef DOOR_ONLY_OPTION
     strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or door\\\\nRadius: "));
 #else
-    strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or kill\\\\nRadius: "));
+    strcpy_P(message, PSTR("Lockdown Enabled. Try 'unlock' before updating fence or aux\\\\nRadius: "));
 #endif
     strcat(message, geofenceRadius);
     strcat_P(message, STR_HOME);
@@ -1109,7 +1111,7 @@ bool handleStatusReq(char* smsSender) {
   #ifdef DOOR_ONLY_OPTION
         strcat_P(message, PSTR("\\\\nDoor: Enabled "));
   #else
-        strcat_P(message, PSTR("\\\\nKill: Enabled "));
+        strcat_P(message, PSTR("\\\\nAux: Enabled "));
   #endif
   
         EEPROM.get(KILLSWITCHSTART_CHAR_3, hour);
@@ -1122,7 +1124,7 @@ bool handleStatusReq(char* smsSender) {
   #ifdef DOOR_ONLY_OPTION
         strcat_P(message, PSTR("\\\\nDoor: Disabled"));
   #else
-        strcat_P(message, PSTR("\\\\nKill: Disabled"));
+        strcat_P(message, PSTR("\\\\nAux: Disabled"));
   #endif
     }
   }
@@ -1211,9 +1213,9 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
       strcpy_P(message, PSTR("Door: Disabled\\\\nHours: "));
 #else
     if (killSwitchEnabled)
-      strcpy_P(message, PSTR("Kill: Enabled\\\\nHours: "));
+      strcpy_P(message, PSTR("Aux: Enabled\\\\nHours: "));
     else
-      strcpy_P(message, PSTR("Kill: Disabled\\\\nHours: "));
+      strcpy_P(message, PSTR("Aux: Disabled\\\\nHours: "));
 #endif
 
     strcat(message, killSwitchStart);
@@ -1238,7 +1240,7 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
 #ifdef DOOR_ONLY_OPTION
       strcat_P(message, PSTR("door"));
 #else
-      strcat_P(message, PSTR("kill"));
+      strcat_P(message, PSTR("aux"));
 #endif
     }
 
@@ -1413,7 +1415,7 @@ bool handleCommandsReq(char* smsSender) {
 #ifdef DOOR_ONLY_OPTION
   return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\nkill\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\naux\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #endif
 }
 
@@ -2427,9 +2429,12 @@ void doorISR() {
     g_v_doorOpenedWhileDoorAlertActive = true;
 }
 
-void setKillSwitchAndDoorAlert(bool tf) {
+void setDoorAlert(bool tf) {
   g_v_killSwitchAndDoorAlertInitialized = true;
   g_v_killSwitchAndDoorAlertActive = tf;
+}
+
+void setKillSwitch(bool tf) {
   digitalWrite(KILL_SWITCH_RELAY_PIN, tf);
 }
 
@@ -2819,7 +2824,7 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
     return;
   }
 
-  if (strstr_P(smsValue, PSTR("kill"))) {
+  if (strstr_P(smsValue, PSTR("aux"))) {
     handleKillSwitchReq(smsSender, smsValue, false);
     return;
   }
