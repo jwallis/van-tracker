@@ -169,18 +169,19 @@ const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
 int8_t g_SimComConnectionStatus = 2;
 int8_t g_totalFailedSendSMSAttempts = 0;
 
-// What was the result of the most recent GPS connection attempt? Must be TRUE to start off with...
-bool g_lastGPSConnAttemptWorked = true;
-int16_t g_lastGPSConnAttemptTime = -1;
-
 int16_t g_lastRestartTime = -1;
-int8_t g_lastGeofenceWarningMinute = -1;
+
+// What was the result of the most recent GPS connection attempt? Must be TRUE to start off with...
+bool g_GPSLastConnAttemptWorked = true;
+int16_t g_GPSLastConnAttemptTime = -1;
 
 int16_t g_pauseStartedAt = -1;
 int16_t g_pauseLengthInMinutes = -1;
 
+int8_t g_geofenceLastWarningMinute = -1;
 int8_t g_geofenceWarningCount = 0;
 bool g_geofenceWarningCountMessageSent = false;
+
 int8_t g_followMessageCount = 0;
 
 volatile bool g_v_killSwitchAndDoorAlertActive = false;
@@ -515,11 +516,11 @@ void watchDogForTurnOffGPS() {
   int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // case 1 example: lastQuery = 5:10pm, current = 5:35pm
-  if (g_lastGPSConnAttemptTime <= currentTime && currentTime - g_lastGPSConnAttemptTime > 20) {
+  if (g_GPSLastConnAttemptTime <= currentTime && currentTime - g_GPSLastConnAttemptTime > 20) {
     setGPS(false);
   }
   // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:25am (which == 25)
-  if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime < 1420) {
+  if (g_GPSLastConnAttemptTime > currentTime && g_GPSLastConnAttemptTime - currentTime < 1420) {
     setGPS(false);
   }
 }
@@ -591,7 +592,7 @@ void watchDogForFollow() {
     return;
 
   // yeah, let's keep trying!
-  g_lastGPSConnAttemptWorked = true;
+  g_GPSLastConnAttemptWorked = true;
 
   char currentLat[12];
   char currentLon[12];
@@ -633,25 +634,25 @@ void watchDogForGeofence() {
   bool geofenceActive = isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3);
 
   if (!geofenceActive) {
-    g_lastGeofenceWarningMinute = -1;
+    g_geofenceLastWarningMinute = -1;
     return;
   }
 
   int8_t currentMinuteInt = getTimePartInt(MINUTE_INDEX);
 
   // If we've sent a geofence warning...
-  if (g_lastGeofenceWarningMinute != -1) {
+  if (g_geofenceLastWarningMinute != -1) {
 
     // ...wait to send the next one after 15 minutes have passed.  User can use follow mode if she wants rapid updates.
 
     // There are 2 cases:
     // A) current minute > last query minute, example lastQuery = 10, current = 30
-    if (g_lastGeofenceWarningMinute <= currentMinuteInt && currentMinuteInt - g_lastGeofenceWarningMinute < 15) {
+    if (g_geofenceLastWarningMinute <= currentMinuteInt && currentMinuteInt - g_geofenceLastWarningMinute < 15) {
       return;
     }
   
     // B) current minute < last query minute, example lastQuery = 57, current = 15
-    if (g_lastGeofenceWarningMinute > currentMinuteInt && g_lastGeofenceWarningMinute - currentMinuteInt > 45) {
+    if (g_geofenceLastWarningMinute > currentMinuteInt && g_geofenceLastWarningMinute - currentMinuteInt > 45) {
       return;
     }
   }
@@ -711,11 +712,11 @@ void sendGeofenceWarning(bool follow, char* currentLat, char* currentLon, char* 
 
   sendSMS(ownerPhoneNumber, message);
   // we only want to send this message the first time the geofence is broken
-  if (g_lastGeofenceWarningMinute == -1 && !follow) {
+  if (g_geofenceLastWarningMinute == -1 && !follow) {
     sendSMS(ownerPhoneNumber, F("Send 'follow' for rapid location updates, 'follow disable' to stop"));
   }
 
-  g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
+  g_geofenceLastWarningMinute = getTimePartInt(MINUTE_INDEX);
 }
 
 void checkSMSInput() {
@@ -725,16 +726,16 @@ void checkSMSInput() {
   if (numberOfSMSs < 1)
     return;
 
-  // We set g_lastGPSConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
-  g_lastGPSConnAttemptWorked = true;
+  // We set g_GPSLastConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
+  g_GPSLastConnAttemptWorked = true;
 
   // Ugh more globals :(
-  // If they send ANY message, if we've auto-disabled geofence warnings, reset the geofence warnings so they start sending again
+  // If they send ANY message, reset the geofence warnings so they start sending again
   g_geofenceWarningCount = 0;
   g_geofenceWarningCountMessageSent = false;
 
   // Let's DON'T do this.  If they're trying to track their van, sending extra messages is annoying, plus a warning will be sent soon anyway
-  // g_lastGeofenceWarningMinute = getTimePartInt(MINUTE_INDEX);
+  // g_geofenceLastWarningMinute = getTimePartInt(MINUTE_INDEX);
 
   char smsSender[15];
   char smsValue[51];
@@ -1304,8 +1305,8 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
     }
   }
 
-  // reset this so the "follow" message will be sent when the fence is broken
-  g_lastGeofenceWarningMinute = -1;
+  // reset this so that: if the fence is currently broken and they send any geofence command, then we'll immediately send a warning
+  g_geofenceLastWarningMinute = -1;
 
   if (validMessage || strstr_P(smsValue, PSTR("status"))) {
     if (geofenceEnabled)
@@ -1491,8 +1492,8 @@ bool setGPS(bool tf) {
   }
 
   // If it isn't getting a GPS fix, do not try for the next 60 minutes (this is to save power).
-  // FYI: We set g_lastGPSConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
-  if (!g_lastGPSConnAttemptWorked) {
+  // FYI: We set g_GPSLastConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
+  if (!g_GPSLastConnAttemptWorked) {
     
     //////////////////////////////////////////////////////////////////////////////
     // DO NOT make a generic method for this!
@@ -1500,15 +1501,15 @@ bool setGPS(bool tf) {
     //////////////////////////////////////////////////////////////////////////////
     int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
-    if (g_lastGPSConnAttemptTime <= currentTime && currentTime - g_lastGPSConnAttemptTime < 60) {
+    if (g_GPSLastConnAttemptTime <= currentTime && currentTime - g_GPSLastConnAttemptTime < 60) {
       return false;
     }
-    if (g_lastGPSConnAttemptTime > currentTime && g_lastGPSConnAttemptTime - currentTime > 1380) {
+    if (g_GPSLastConnAttemptTime > currentTime && g_GPSLastConnAttemptTime - currentTime > 1380) {
       return false;
     }
   }
 
-  g_lastGPSConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+  g_GPSLastConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
   // -1 = error querying GPS
   //  0 = GPS off
@@ -1516,7 +1517,7 @@ bool setGPS(bool tf) {
   //  2 = 2D fix
   //  3 = 3D fix
   if (fona.GPSstatus() >= 2) {
-    g_lastGPSConnAttemptWorked = true;
+    g_GPSLastConnAttemptWorked = true;
     return true;
   }
 
@@ -1531,7 +1532,7 @@ bool setGPS(bool tf) {
   // error, give up
   if (fona.GPSstatus() < 0) {
     debugBlink(1,5);
-    g_lastGPSConnAttemptWorked = false;
+    g_GPSLastConnAttemptWorked = false;
     fona.enableGPS(false);
     return false;
   }
@@ -1556,7 +1557,7 @@ bool setGPS(bool tf) {
         delay(3000);
         sendRawCommand(F("AT+CGNSSINFO"));
       }
-      g_lastGPSConnAttemptWorked = true;
+      g_GPSLastConnAttemptWorked = true;
       return true;
     }
     debugBlink(0,7);
@@ -1565,7 +1566,7 @@ bool setGPS(bool tf) {
 
   // no fix, give up
   debugBlink(1,7);
-  g_lastGPSConnAttemptWorked = false;
+  g_GPSLastConnAttemptWorked = false;
   fona.enableGPS(false);
   return false;
 }
@@ -1668,7 +1669,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
 
   // I've seen where setGPS(true) above worked, but then then fona.getGPS() failed a few times in a row, but each
   // time I saw this, fona.getGPS() began working consistently afterwards, so do NOT do either of the following:
-  //      g_lastGPSConnAttemptWorked = false;
+  //      g_GPSLastConnAttemptWorked = false;
   //      setGPS(false);
 
   latitude[0] = '\0';
@@ -1751,8 +1752,8 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //  
 //      // Leave the != NULL in there in case the '.' is at the 0th position, which I think is valid
 //      if (strlen(latitude) > 7 && strlen(longitude) > 7 && strchr(latitude, '.') != NULL && strchr(longitude, '.') != NULL) {
-//        g_lastGPSConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
-//        g_lastGPSConnAttemptWorked = true;
+//        g_GPSLastConnAttemptTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
+//        g_GPSLastConnAttemptWorked = true;
 //        return true;
 //      }
 //      else
@@ -1762,7 +1763,7 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //
 //  // I've seen where setGPS(true) above worked, but then then fona.getGPS() failed a few times in a row, but each
 //  // time I saw this, fona.getGPS() began working consistently afterwards, so do NOT do either of the following:
-//  //      g_lastGPSConnAttemptWorked = false;
+//  //      g_GPSLastConnAttemptWorked = false;
 //  //      setGPS(false);
 //  latitude[0] = '\0';
 //  longitude[0] = '\0';
