@@ -506,7 +506,12 @@ void resetSystem() {
 }
 
 void watchDogForTurnOffGPS() {
-  // shut down GPS module after 20 minutes of inactivity to save power
+  // Shut down the GPS module after 35 minutes of inactivity to save power.
+  //   Typically this will happen after the geofence is no longer active, either by "unlock" or based on the schedule.
+  // While locked, or while scheduled, if setGPS() cannot get a fix, setGPS() will only retry getting a fix every 30 minutes,
+  //   this is because setGPS() will wait up to 2 min to get a fix and the unit will be unresponsive during that time.
+  //   Point being, the time we wait (35 minutes) to turn OFF the GPS in this method must be a little larger number than the "try again every 30 minutes" number in setGPS().
+  //   Getting a fix with a "warm start" is much more likely to work than getting a "cold start"
 
   // if already off, return
   if (fona.GPSstatus() == 0) {
@@ -515,12 +520,12 @@ void watchDogForTurnOffGPS() {
 
   int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
-  // case 1 example: lastQuery = 5:10pm, current = 5:35pm
-  if (g_GPSLastConnAttemptTime <= currentTime && currentTime - g_GPSLastConnAttemptTime > 20) {
+  // case 1 example: lastQuery = 5:10pm, current = 5:50pm
+  if (g_GPSLastConnAttemptTime <= currentTime && currentTime - g_GPSLastConnAttemptTime > 35) {
     setGPS(false);
   }
-  // case 2 example: lastQuery = 11:56pm (which == 1436), current = 12:25am (which == 25)
-  if (g_GPSLastConnAttemptTime > currentTime && g_GPSLastConnAttemptTime - currentTime < 1420) {
+  // case 2 example: lastQuery = 11:55pm (which == 1435), current = 12:40am (which == 40)
+  if (g_GPSLastConnAttemptTime > currentTime && g_GPSLastConnAttemptTime - currentTime < 1405) {
     setGPS(false);
   }
 }
@@ -1491,8 +1496,9 @@ bool setGPS(bool tf) {
     return false;
   }
 
-  // If it isn't getting a GPS fix, do not try for the next 60 minutes (this is to save power).
-  // FYI: We set g_GPSLastConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue.
+  // If it isn't getting a GPS fix, do not try for the next 30 minutes.
+  //   This is because this method can take up to 2 minutes to complete and in that time, the unit will be unresponsive.
+  // FYI: We set g_GPSLastConnAttemptWorked = TRUE every time we receive a new command in case the user has fixed the GPS connection issue and is doing a "loc"
   if (!g_GPSLastConnAttemptWorked) {
     
     //////////////////////////////////////////////////////////////////////////////
@@ -1501,10 +1507,10 @@ bool setGPS(bool tf) {
     //////////////////////////////////////////////////////////////////////////////
     int16_t currentTime = getTimePartInt(HOUR_INDEX) * 60 + getTimePartInt(MINUTE_INDEX);
 
-    if (g_GPSLastConnAttemptTime <= currentTime && currentTime - g_GPSLastConnAttemptTime < 60) {
+    if (g_GPSLastConnAttemptTime <= currentTime && currentTime - g_GPSLastConnAttemptTime < 30) {
       return false;
     }
-    if (g_GPSLastConnAttemptTime > currentTime && g_GPSLastConnAttemptTime - currentTime > 1380) {
+    if (g_GPSLastConnAttemptTime > currentTime && g_GPSLastConnAttemptTime - currentTime > 1410) {
       return false;
     }
   }
@@ -1541,8 +1547,8 @@ bool setGPS(bool tf) {
   fona.enableGPS(true);
   delay(4000);
 
-  // wait up to 90s to get GPS fix
-  for (int8_t j = 0; j < 23; j++) {
+  // wait up to 140s to get GPS fix
+  for (int8_t j = 0; j < 36; j++) {
     if (fona.GPSstatus() >= 2) {
       debugBlink(1,8);
 
@@ -1564,10 +1570,10 @@ bool setGPS(bool tf) {
     delay(1000);
   }
 
-  // no fix, give up
+  // No fix, give up, but DON'T TURN OFF THE GPS MODULE!
+  //   We should keep it on so hopefully it'll get a fix in its background processing.
   debugBlink(1,7);
   g_GPSLastConnAttemptWorked = false;
-  fona.enableGPS(false);
   return false;
 }
 
