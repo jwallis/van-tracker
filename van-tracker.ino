@@ -234,9 +234,11 @@ void setup() {
 #endif
   
   // Activate kill switch ASAP if Enabled and Always On
-  if (isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3)) {
-    setKillSwitchAndDoorAlert(true);
-  }
+  setKillSwitchAndDoorAlert(isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
+
+  // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
+  if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
+    g_v_doorOpenedWhileDoorAlertActive = true;
 
   setupSimCom();
   waitUntilNetworkConnected(300);
@@ -245,6 +247,7 @@ void setup() {
   updateClock();
   updateLastResetTime();
   
+  // Now that we have the clock, set kill switch and door alert (based on the schedule) ASAP
   setKillSwitchAndDoorAlert(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
@@ -1546,6 +1549,7 @@ bool setGPS(bool tf) {
   // turn on
   fona.enableGPS(true);
   delay(4000);
+  char temp[1];
 
   // wait up to 140s to get GPS fix
   for (int8_t j = 0; j < 36; j++) {
@@ -1553,16 +1557,9 @@ bool setGPS(bool tf) {
       debugBlink(1,8);
 
       // I really hate to do this, but the first GPS response is sometimes WAY off (> 200 feet) and you get a geofence warning...
-      // We have to sendRaw() because if we call getGPS we're calling the function that called this function.
-      if (fona.type() == SIM7000) {
-        sendRawCommand(F("AT+CGNSINF"));
-        delay(3000);
-        sendRawCommand(F("AT+CGNSINF"));
-      } else {
-        sendRawCommand(F("AT+CGNSSINFO"));
-        delay(3000);
-        sendRawCommand(F("AT+CGNSSINFO"));
-      }
+      fona.getGPS(temp, 1);
+      delay(3000);
+      fona.getGPS(temp, 1);
       g_GPSLastConnAttemptWorked = true;
       return true;
     }
