@@ -1146,14 +1146,14 @@ bool handleUseSMSReq(char* smsSender, char* smsValue) {
 
 bool handleFollowReq(char* smsSender, char* smsValue) {
   // if someone's car was just stolen, just plain "follow" is probably plenty to type
-  if (strstr_P(smsValue, PSTR("enable")) || strcmp_P(smsValue, PSTR("follow")) == 0) {
+  if (strstr_P(smsValue, PSTR("en")) || strcmp_P(smsValue, PSTR("follow")) == 0) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
     g_followMessageCount = 0;
     return true;
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Enabled"));
   }
-  if (strstr_P(smsValue, PSTR("disable"))) {
+  if (strstr_P(smsValue, PSTR("dis"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
     return true;
     // save a little memory/data
@@ -1547,7 +1547,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     // full string SIM7500:
     //    2,06,00,00,3012.586830,N,09745.886045,W,080421,220736.0,183.9,0.0,227.5,1.3,1.0,0.8
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPS(0, gpsString, 120);
+      fona.getGPS(gpsString, 120);
 
       if (fona.type() == SIM7000) {
         getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
@@ -1674,7 +1674,7 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //
 //  // full GPS string:
 //  // 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-//  fona.getGPS(0, gpsString, 120);
+//  fona.getGPS(gpsString, 120);
 //  getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
 //
 //  // if GPS is already working OR we turn it on successfully
@@ -1697,7 +1697,7 @@ void convertDegreesToDecimal(char* inLatStr, char NSEW) {
 //        return true;
 //      }
 //      else
-//        fona.getGPS(0, gpsString, 120);
+//        fona.getGPS(gpsString, 120);
 //    }
 //  }
 //
@@ -1722,7 +1722,7 @@ bool getGPSTime(char* timeStr) {
     //                                           ...,lat        ,S,lon         ,E,DDMMYY,HHmmss.0,  alt,spd,dir,...
     
     for (int8_t i = 0; i < 10; i++) {
-      fona.getGPS(0, gpsString, 120);
+      fona.getGPS(gpsString, 120);
 
       if (strlen(gpsString) > 40) {
         if (fona.type() == SIM7000)
