@@ -273,6 +273,7 @@ void loop() {
     debugBlink(0,2);
     watchDogForResume();
     watchDogForKillSwitch();
+    watchDogForFollow();
     watchDogForGeofence();
     watchDogForTurnOffGPS();
     watchDogForReset();
@@ -584,15 +585,20 @@ void watchDogForKillSwitch() {
   }
 }
 
-bool watchDogForFollow(char* currentLat, char* currentLon, char* currentSpeed, char* currentDir) {
+void watchDogForFollow() {
+
   bool follow;
   EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
-
   if (!follow)
-    return false;
+    return;
 
   // yeah, let's keep trying!
   g_lastGPSConnAttemptWorked = true;
+
+  char currentLat[12];
+  char currentLon[12];
+  char currentSpeed[4];
+  char currentDir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   // do not do "if (getGPS...) then sendGeofence...)
   // if we can't get GPS, follow will send 0,0 so at least the user knows we're trying
@@ -614,17 +620,13 @@ bool watchDogForFollow(char* currentLat, char* currentLon, char* currentSpeed, c
   
     delay(40000);  // send a Follow message every minute or so
   }
-
-  return true;
 }
 
 void watchDogForGeofence() {
-  char currentLat[12];
-  char currentLon[12];
-  char currentSpeed[4];
-  char currentDir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
-  if (watchDogForFollow(currentLat, currentLon, currentSpeed, currentDir))
+  bool follow;
+  EEPROM.get(GEOFENCEFOLLOW_BOOL_1, follow);
+  if (follow)
     return;
 
   if (g_pauseStartedAt >= 0)
@@ -668,6 +670,11 @@ void watchDogForGeofence() {
     }
     return;
   }
+
+  char currentLat[12];
+  char currentLon[12];
+  char currentSpeed[4];
+  char currentDir[4];   // starts out between 0..359 degrees, i.e. "227" and ends up as direction, i.e. "NW"
 
   if (getGPSLatLonSpeedDir(currentLat, currentLon, currentSpeed, currentDir) && outsideGeofence(currentLat, currentLon)) {
     sendGeofenceWarning(false, currentLat, currentLon, currentSpeed, currentDir);
