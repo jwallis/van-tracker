@@ -774,15 +774,6 @@ void checkSMSInput() {
       continue;
     }
 
-    // "contains" match
-    if (strstr_P(smsValue, PSTR("both"))) {
-      if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
-        continue;
-
-      if (handleBothReq(smsSender, smsValue))
-        deleteSMS(smsSlotNumber);
-      continue;
-    } 
 
     // "contains" match
 #ifdef DOOR_ONLY_OPTION
@@ -793,7 +784,7 @@ void checkSMSInput() {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
-      if (handleKillSwitchReq(smsSender, smsValue, false))
+      if (handleKillSwitchReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -803,7 +794,7 @@ void checkSMSInput() {
       if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
         continue;
 
-      if (handleGeofenceReq(smsSender, smsValue, false))
+      if (handleGeofenceReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
     }
@@ -970,9 +961,6 @@ bool handleLockReq(char* smsSender) {
     bool geofenceEnabled;
     char geofenceStart[3];
     char geofenceEnd[3];
-    bool killSwitchEnabled;
-    char killSwitchStart[3];
-    char killSwitchEnd[3];
   
     // store primary variables (except Follow) in saved state variables
     EEPROM.get(GEOFENCEENABLED_BOOL_1, geofenceEnabled);
@@ -985,12 +973,6 @@ bool handleLockReq(char* smsSender) {
     EEPROM.put(GEOFENCESTART_CHAR_SAVED_3, geofenceStart);
     EEPROM.get(GEOFENCEEND_CHAR_3, geofenceEnd);
     EEPROM.put(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
-    EEPROM.get(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
-    EEPROM.put(KILLSWITCHENABLED_BOOL_SAVED_1, killSwitchEnabled);
-    EEPROM.get(KILLSWITCHSTART_CHAR_3, killSwitchStart);
-    EEPROM.put(KILLSWITCHSTART_CHAR_SAVED_3, killSwitchStart);
-    EEPROM.get(KILLSWITCHEND_CHAR_3, killSwitchEnd);
-    EEPROM.put(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
   
     // set primary variables (except Follow) to enabled, always on, etc. and use radius = 500
     // and set fence Home to current location
@@ -1001,9 +983,6 @@ bool handleLockReq(char* smsSender) {
     EEPROM.put(GEOFENCEHOMELON_CHAR_12, geofenceHomeLon);
     EEPROM.put(GEOFENCESTART_CHAR_3, "00");
     EEPROM.put(GEOFENCEEND_CHAR_3, "00");
-    EEPROM.put(KILLSWITCHENABLED_BOOL_1, true);
-    EEPROM.put(KILLSWITCHSTART_CHAR_3, "00");
-    EEPROM.put(KILLSWITCHEND_CHAR_3, "00");
   
     // set lockdown variable ON
     EEPROM.put(LOCKDOWNENABLED_BOOL_1, true);
@@ -1037,9 +1016,6 @@ bool handleUnlockReq(char* smsSender) {
     char geofenceHomeLon[12];
     char geofenceStart[3];
     char geofenceEnd[3];
-    bool killSwitchEnabled;
-    char killSwitchStart[3];
-    char killSwitchEnd[3];
   
     // put saved state variables (except Follow) back into primary variables
     EEPROM.get(GEOFENCEENABLED_BOOL_SAVED_1, geofenceEnabled);
@@ -1052,12 +1028,6 @@ bool handleUnlockReq(char* smsSender) {
     EEPROM.put(GEOFENCESTART_CHAR_3, geofenceStart);
     EEPROM.get(GEOFENCEEND_CHAR_SAVED_3, geofenceEnd);
     EEPROM.put(GEOFENCEEND_CHAR_3, geofenceEnd);
-    EEPROM.get(KILLSWITCHENABLED_BOOL_SAVED_1, killSwitchEnabled);
-    EEPROM.put(KILLSWITCHENABLED_BOOL_1, killSwitchEnabled);
-    EEPROM.get(KILLSWITCHSTART_CHAR_SAVED_3, killSwitchStart);
-    EEPROM.put(KILLSWITCHSTART_CHAR_3, killSwitchStart);
-    EEPROM.get(KILLSWITCHEND_CHAR_SAVED_3, killSwitchEnd);
-    EEPROM.put(KILLSWITCHEND_CHAR_3, killSwitchEnd);
   
     // set lockdown variable OFF
     EEPROM.put(LOCKDOWNENABLED_BOOL_1, false);
@@ -1192,11 +1162,7 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
   return sendSMS(smsSender, F("Try 'follow' plus:\\\\nenable\\\\ndisable"));
 }
 
-bool handleBothReq(char* smsSender, char* smsValue) {
-  return handleKillSwitchReq(smsSender, smsValue, true) && handleGeofenceReq(smsSender, smsValue, true);
-}
-
-bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
+bool handleKillSwitchReq(char* smsSender, char* smsValue) {
   char message[100];
 
   bool validMessage = false;
@@ -1231,39 +1197,27 @@ bool handleKillSwitchReq(char* smsSender, char* smsValue, bool alternateSMSOnFai
     return sendSMS(smsSender, message);
   }
   else {
-    // This whole section is not good because it's tied to how handleGeofenceReq() works in its final ELSE clause.
-    // "both" was an afterthought, so this section was a retrofit.
-    // The point is, we handle responding to invalid messages for the "both" command here in handleKillSwitchReq()
-
     strcpy_P(message, PSTR("Try '"));
-    if (alternateSMSOnFailure) {
-      strcat_P(message, PSTR("both"));
-    }
-    else {
+
 #ifdef DOOR_ONLY_OPTION
-      strcat_P(message, PSTR("door"));
+    strcat_P(message, PSTR("door"));
 #else
-      strcat_P(message, PSTR("aux"));
+    strcat_P(message, PSTR("aux"));
 #endif
-    }
 
     strcat_P(message, PSTR("' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)"));
 
-    if (alternateSMSOnFailure) {
-      sendSMS(smsSender, F("TheVanTracker.com/h5"));
-    }
-    else {
 #ifdef DOOR_ONLY_OPTION
-      sendSMS(smsSender, F("TheVanTracker.com/h4"));
+    sendSMS(smsSender, F("TheVanTracker.com/h4"));
 #else
-      sendSMS(smsSender, F("TheVanTracker.com/h3"));
+    sendSMS(smsSender, F("TheVanTracker.com/h3"));
 #endif
-    }
+
     return sendSMS(smsSender, message);
   }
 }
 
-bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailure) {
+bool handleGeofenceReq(char* smsSender, char* smsValue) {
   char message[139] = {0};    // longest string "Fence: Disabled___Hours: 23-23 (always on)___Radius: 11500 feet___Home: google.com/search?q=-52.4322115,-110.7869289_"
 
   bool validMessage = false;
@@ -1324,17 +1278,8 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
     return sendSMS(smsSender, message);
   }
   else {
-    // This whole section is not good because it's tied to how handleKillSwitchReq() works in its final ELSE clause.
-    // "both" was an afterthought, so this section was a retrofit.
-    // The point is, we handle responding to invalid messages for the "both" command not here, but up in handleKillSwitchReq()
-
-    if (alternateSMSOnFailure) {
-      return true;
-    }
-    else {
-      sendSMS(smsSender, F("TheVanTracker.com/h2"));
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
-    }
+    sendSMS(smsSender, F("TheVanTracker.com/h2"));
+    return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
   }
 }
 
@@ -1416,9 +1361,9 @@ void handleTwilioReq(char* smsSender, char* smsValue) {
 bool handleCommandsReq(char* smsSender) {
   sendSMS(smsSender, F("TheVanTracker.com/help"));
 #ifdef DOOR_ONLY_OPTION
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\ndoor\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #else
-  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\naux\\\\nboth\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
+  return sendSMS(smsSender, F("Commands:\\\\nstatus\\\\nfence\\\\naux\\\\nlock\\\\nunlock\\\\npause\\\\nresume\\\\nloc\\\\nfollow\\\\nowner\\\\npoweron"));
 #endif
 }
 
