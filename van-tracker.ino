@@ -1162,6 +1162,8 @@ bool handleUseSMSReq(char* smsSender, char* smsValue) {
 
 bool handleFollowReq(char* smsSender, char* smsValue) {
   // if someone's car was just stolen, just plain "follow" is probably plenty to type
+
+  // handle "follow enable" or exactly "follow"
   if (strstr_P(smsValue, PSTR("en")) || strcmp_P(smsValue, PSTR("follow")) == 0) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, true);
     g_followMessageCount = 0;
@@ -1169,7 +1171,9 @@ bool handleFollowReq(char* smsSender, char* smsValue) {
     // save a little memory/data
     //return sendSMS(smsSender, F("Follow: Enabled"));
   }
-  if (strstr_P(smsValue, PSTR("dis"))) {
+
+  // handle "follow disable" or "unfollow"
+  if (strstr_P(smsValue, PSTR("dis")) || strstr_P(smsValue, PSTR("unfol"))) {
     EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
     return true;
     // save a little memory/data
@@ -2415,7 +2419,7 @@ void setupSimCom() {
       debugBlink(0,4);
       return;
     }
-    delay(10000);
+    delay(1000);
   }
   g_SimComConnectionStatus = 1;
 }
