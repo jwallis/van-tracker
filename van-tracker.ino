@@ -69,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.2.0")
+#define VT_VERSION        F("VT 3.2.1")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -910,8 +910,8 @@ void checkSMSInput() {
     if (smsValue[0] == '~') {
       // special: we must pass the case-sensitive version of smsValue to handleATCommandReq because the AT command could be case sensitive
       fona.readSMS(smsSlotNumber, smsValue, 50, &smsValueLength);
-      handleATCommandReq(smsSender, &smsValue[1]);
       deleteSMS(smsSlotNumber);
+      handleATCommandReq(smsSender, &smsValue[1]);
       continue;
     }
 
