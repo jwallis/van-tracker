@@ -69,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.2.1")
+#define VT_VERSION        F("VT 3.3.0")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -419,7 +419,7 @@ void updateClock() {
 
   // If not, we resort to GPS and the timezone from EEPROM
 
-  // From SIM7000 AT command reference:
+  // From SIM7000/SIM7500/SIM7600 AT command reference:
   //   String type(string should be included in quotation marks) value
   //   format is "yy/MM/dd,hh:mm:ss±zz", where characters indicate year (two last digits),
   //   month, day, hour, minutes, seconds and time zone (indicates the difference, expressed 
@@ -445,9 +445,9 @@ void updateClock() {
     int8_t localHourInt;
     char localHourStr[3];
 
-    // SIM7000 keeps local time, SIM7500 keeps GMT!  That SUCKS!
+    // SIM7000 and SIM7600G keep local time, SIM7500 keeps GMT!  That SUCKS!
     // add utc time + offset to get local time... with some caveats
-    if (fona.type() == SIM7000) {
+    if (fona.type() == SIM7000 || fona.type() == SIM7600G) {
       if (gpsHourInt + tzOffsetInt > 23)
         localHourInt = gpsHourInt + tzOffsetInt - 24;
       else {
@@ -1613,6 +1613,9 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
     //    1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
     // full string SIM7500:
     //    2,06,00,00,3012.586830,N,09745.886045,W,080421,220736.0,183.9,0.0,227.5,1.3,1.0,0.8
+    // full string SIM7600G:
+    //    2,10,05,00,3012.592084,N,09745.884118,W,150422,163347.0,181.1,0.5,343.7,1.0,0.7,0.8
+ 
     for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(gpsString, 120);
 
@@ -1620,7 +1623,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
         getOccurrenceInDelimitedString(gpsString, latitude, 4, ',', 11);
         getOccurrenceInDelimitedString(gpsString, longitude, 5, ',', 11);
       }
-      else {
+      else { // SIM7500 || SIM7600G
         getOccurrenceInDelimitedString(gpsString, latitude, 5, ',', 11);
         getOccurrenceInDelimitedString(gpsString, NS, 6, ',');
         getOccurrenceInDelimitedString(gpsString, longitude, 7, ',', 11);
@@ -1653,7 +1656,7 @@ bool getGPSLatLonSpeedDir(char* latitude, char* longitude, char* speed, char* di
           getOccurrenceInDelimitedString(gpsString, speed, 7, ',', 3);
           getOccurrenceInDelimitedString(gpsString, dir, 8, ',', 3);
         }
-        else {
+        else { // SIM7500 || SIM7600G
           getOccurrenceInDelimitedString(gpsString, speed, 12, ',', 3);
           getOccurrenceInDelimitedString(gpsString, dir, 13, ',', 3);
         }
@@ -1784,9 +1787,10 @@ bool getGPSTime(char* timeStr) {
 
   if (setGPS(true)){
     // full string:
-    // SIM7000: AT+CGNSINF:   +CGNSINF: 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
-    // SIM7500: AT+CGNSSINFO: +CGNSSINFO: 2,06,00,00,3012.586884,N,09745.881688,W,080421,223651.0,196.1,0.0,0.0,1.5,1.2,0.9
+    // SIM7000:  AT+CGNSINF:   +CGNSINF: 1,1,20190913060459.000,30.213823,-97.782017,204.500,1.87,90.1,1,,1.2,1.5,0.9,,11,6,,,39,,
+    // SIM7500:  AT+CGNSSINFO: +CGNSSINFO: 2,06,00,00,3012.586884,N,09745.881688,W,080421,223651.0,196.1,0.0,0.0,1.5,1.2,0.9
     //                                           ...,lat        ,S,lon         ,E,DDMMYY,HHmmss.0,  alt,spd,dir,...
+    // SIM7600G: <same>
     
     for (int8_t i = 0; i < 10; i++) {
       fona.getGPS(gpsString, 120);
@@ -1794,7 +1798,7 @@ bool getGPSTime(char* timeStr) {
       if (strlen(gpsString) > 40) {
         if (fona.type() == SIM7000)
           getOccurrenceInDelimitedString(gpsString, timeStr, 3, ',');
-        else {
+        else { // SIM7500 || SIM7600G
           getOccurrenceInDelimitedString(gpsString, tempTimeStr, 10, ',');
           strcpy_P(timeStr, PSTR("20210101_________0"));    // we don't care about the date, this is an edge case
           strcpy(&timeStr[8], tempTimeStr);                 // overwrite the _________ with the real time... from the exmple above, 20210101_________0 -> 20210101223651.0_0
@@ -1858,6 +1862,7 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
 //Time
 
 void getTime(char* currentTimeStr) {
+  // get time in LOCAL TIME
 
   // sets currentTime to "20/01/31,17:03:55-20" INCLUDING quotes 
   for (int8_t i = 0; i < 3; i++) {
@@ -1867,8 +1872,12 @@ void getTime(char* currentTimeStr) {
     if (currentTimeStr[0] == '"' && strlen(currentTimeStr) == 22)
       return;
 
-    // else, try simple self-healing.  If echo is on, basically all commands to SimCom module won't work.
+    // else, try simple self-healing...
+    // If echo is on, basically all commands to SimCom module won't work.
     fona.setEchoOff();
+    // If we sent a message and it failed close the connection, it can take 10+ minutes for SIM to respond.  Let's try closing again.
+    fona.TCPshut();
+    
     delay(1000);
   }
 }
@@ -2468,6 +2477,8 @@ void setupSimCom() {
       debugBlink(0,4);
       return;
     }
+
+    fona.TCPshut();
     delay(1000);
   }
   g_SimComConnectionStatus = 1;
@@ -2493,7 +2504,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     debugBlink(0,6);
     // About to run out of time... last ditch effort...
     // set Cellular OPerator Selection to "automatic"
-    if (i < 5)
+    if (i < 2)
       fona.setNetworkOperator(F("AT&T"));
 
     fona.setEchoOff();
@@ -2557,7 +2568,7 @@ void initBaud() {
       debugPrintln(F("Connected at 115200, setting to 9600..."));
       if (fona.type() == SIM7000)
         sendRawCommand(F("AT+IPR=9600"));
-      else
+      else // SIM7500 || SIM7600G
         sendRawCommand(F("AT+IPREX=9600"));
       SimComSerial->begin(9600);
     }
@@ -2613,9 +2624,11 @@ void initSimCom() {
     sendRawCommand(F("AT+IPR=9600"));         // set connection baud to 9600
     sendRawCommand(F("AT+CLTS=1"));           // Turn on "get clock when registering w/network" see https://forums.adafruit.com/viewtopic.php?f=19&t=58002
     sendRawCommand(F("AT+CNETLIGHT=1"));      // Turn on "net" LED
-  } else {
+  } else { // SIM7500 || SIM7600G
     sendRawCommand(F("AT+IPREX=9600"));       // also set connection baud to 9600
   }
+  sendRawCommand(F("AT+CTZU=1"));             // Enable automatic time and time zone update via NITZ
+
   fona.setNetworkOperator(F("AT&T"));         // Set Cellular OPerator Selection to "automatic"
   sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));  // ...this is really important, so I'm doubling up.
   sendRawCommand(F("AT+CMEE=0"));             // Turn off verbose mode
