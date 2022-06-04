@@ -69,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.3.0")
+#define VT_VERSION        F("VT 3.3.1")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -1973,7 +1973,7 @@ void checkForDeadMessages() {
   // SO, if we start up and there are 10 messages, 99% of the time that means one of them is causing problems.
   // This should never happen, but allows turning off/on to clear out messages if "deleteallmessages" isn't working.
   int8_t numberOfSMSs = fona.getNumSMS();
-  if (numberOfSMSs == 10) {
+  if (numberOfSMSs > 9) {
     fona.deleteAllSMS();
   }
 }
@@ -2225,6 +2225,7 @@ void insertZero(char *in) {
 
 void sendRawCommand(char* command) {
   delay(200);
+  debugPrintln(command);
   fona.println(command);
   delay(1000);
 
@@ -2236,6 +2237,7 @@ void sendRawCommand(char* command) {
 
 void sendRawCommand(const __FlashStringHelper* command) {
   delay(200);
+  debugPrintln(command);
   fona.println(command);
   delay(1000);
 
@@ -2500,13 +2502,9 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
-  for (int16_t i = secondsToWait; i > 0; i--) {
+  for (int16_t i = secondsToWait-1; i > 0; i--) {
     debugBlink(0,6);
-    // About to run out of time... last ditch effort...
-    // set Cellular OPerator Selection to "automatic"
-    if (i < 2)
-      fona.setNetworkOperator(F("AT&T"));
-
+    
     fona.setEchoOff();
     netConn = fona.getNetworkStatus();
 
@@ -2524,6 +2522,12 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 2 = Not registered on cell network
     // 3 = Cell network registration denied
     // 4 = Unknown
+
+    // if "not currently searching an operator to register to" or "registration denied" try setting network operator
+    if ((netConn == 0 || netConn == 3) && i % 30 == 0) {
+      fona.setNetworkOperator(F("AT&T"));
+    }
+    
     if (netConn == 1 || netConn == 5) {
       debugPrintln(F("\nOK"));
       g_SimComConnectionStatus = 0;
@@ -2531,7 +2535,6 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
       fona.TCPshut();
       return;
     }
-    delay(2000);
   }
 
   // netConn == 0 means not registered, so we translate it to 2 (also means not registered) before assigning its value to g_SimComConnectionStatus
