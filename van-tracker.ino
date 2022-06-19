@@ -69,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.3.1 Aux")
+#define VT_VERSION        F("VT 3.3.2 Aux")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -2458,6 +2458,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
 
     fona.setEchoOff();
     netConn = fona.getNetworkStatus();
+    debugPrintln(netConn);
 
     // netConn status meanings:
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
@@ -2701,6 +2702,13 @@ void handleSerialInput(char* temp) {
 //  }
 //  if (temp[0] == 'd') {
 //    fona.deleteAllSMS();
+//  }
+//  if (temp[0] == 'p') {
+//    EEPROM.put(OWNERPHONENUMBER_CHAR_15, "+15129999999");
+//    EEPROM.put(DEVKEY_CHAR_9, "99999999");
+//    EEPROM.put(TWILIOPHONENUMBER_CHAR_12, "12059999999");
+//    EEPROM.put(USEPLAINSMS_BOOL_1, false);
+//    EEPROM.put(POWERON_BOOL_1, false);
 //  }
 //  if (temp[0] == 'm') {
 //    char ownerPhoneNumber[15];
