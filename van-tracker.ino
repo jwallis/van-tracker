@@ -69,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.3.3")
+#define VT_VERSION        F("VT 3.3.4")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -766,6 +766,13 @@ void checkSMSInput() {
     cleanString(smsValue, ' ');
     debugPrint(F("IN : "));
     debugPrintln(smsValue);
+
+    // "contains" match
+    // garbage, can get us in an endless loop
+    if (strstr_P(smsValue, PSTR("free msg"))) {
+      deleteSMS(smsSlotNumber);
+      continue;
+    } 
 
     // exact match
     if (strcmp_P(smsValue, PSTR("unlock")) == 0) {
