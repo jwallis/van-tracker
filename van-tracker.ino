@@ -69,7 +69,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.3.3")
+#define VT_VERSION        F("VT 3.3.4_Metric")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -157,7 +157,7 @@ Adafruit_FONA fona = Adafruit_FONA(99);
 #define USEPLAINSMS_BOOL_1                132
 #define POWERON_BOOL_1                    133
 
-const char STR_HOME[] PROGMEM = " feet\\\\nHome: google.com/search?q=";
+const char STR_HOME[] PROGMEM = " m\\\\nHome: google.com/search?q=";
 const char STR_UNABLE_GPS[] PROGMEM = "Unable to get GPS signal";
 
 // g_SimComConnectionStatus status meanings
@@ -767,6 +767,13 @@ void checkSMSInput() {
     debugPrint(F("IN : "));
     debugPrintln(smsValue);
 
+    // "contains" match
+    // garbage, can get us in an endless loop
+    if (strstr_P(smsValue, PSTR("free msg"))) {
+      deleteSMS(smsSlotNumber);
+      continue;
+    } 
+
     // exact match
     if (strcmp_P(smsValue, PSTR("unlock")) == 0) {
       if (handleUnlockReq(smsSender))
@@ -1351,7 +1358,7 @@ bool handleGeofenceReq(char* smsSender, char* smsValue, bool alternateSMSOnFailu
     }
     else {
       sendSMS(smsSender, F("TheVanTracker.com/h2"));
-      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 500 (500 feet)"));
+      return sendSMS(smsSender, F("Try 'fence' plus:\\\\nenable\\\\ndisable\\\\nstatus\\\\nhours 23 7 (11pm-7am)\\\\nhome (uses current loc)\\\\nradius 200 (200 m)"));
     }
   }
 }
@@ -1853,7 +1860,7 @@ bool outsideGeofence(char* lat1Str, char* lon1Str) {
   dist_calc += dist_calc2;
 
   dist_calc = (2 * atan2(sqrt(dist_calc), sqrt(1.0 - dist_calc)));
-  dist_calc *= 20902231.64; //Converting to feet
+  dist_calc *= 6371000.20; //Converting to meters
 
   return dist_calc > geofenceRadiusFloat;
 }
@@ -2523,11 +2530,6 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 2 = Not registered on cell network
     // 3 = Cell network registration denied
     // 4 = Unknown
-
-    // if "not currently searching an operator to register to" or "registration denied" try setting network operator
-    if ((netConn == 0 || netConn == 3) && i % 30 == 0) {
-      fona.setNetworkOperator(F("AT&T"));
-    }
     
     if (netConn == 1 || netConn == 5) {
       debugPrintln(F("\nOK"));
@@ -2588,7 +2590,7 @@ void initEEPROM() {
   EEPROM.put(GEOFENCEENABLED_BOOL_1, false);
   EEPROM.put(GEOFENCEHOMELAT_CHAR_12, "52.4322115");
   EEPROM.put(GEOFENCEHOMELON_CHAR_12, "10.7869289");
-  EEPROM.put(GEOFENCERADIUS_CHAR_7, "500");
+  EEPROM.put(GEOFENCERADIUS_CHAR_7, "200");
   EEPROM.put(GEOFENCESTART_CHAR_3, "23");
   EEPROM.put(GEOFENCEEND_CHAR_3, "07");
   EEPROM.put(GEOFENCEFOLLOW_BOOL_1, false);
