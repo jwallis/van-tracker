@@ -235,6 +235,7 @@ void setup() {
   
   // Activate door alert ASAP if Enabled and Always On
   setDoorAlert(isAlwaysOn(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3));
+  setKillSwitch(isAlwaysOn(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
   if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
@@ -249,6 +250,7 @@ void setup() {
   
   // Now that we have the clock, set door alert (based on the schedule) ASAP
   setDoorAlert(isActive(GEOFENCEENABLED_BOOL_1, GEOFENCESTART_CHAR_3, GEOFENCEEND_CHAR_3));
+  setKillSwitch(isActive(KILLSWITCHENABLED_BOOL_1, KILLSWITCHSTART_CHAR_3, KILLSWITCHEND_CHAR_3));
 
   // If VT is powered on while door is open, the ISR will not fire. So we manually check here so we can send a warning message
   if (g_v_killSwitchAndDoorAlertActive && !digitalRead(DOOR_INTERRUPT_PIN))
@@ -2821,12 +2823,12 @@ void testHandleSMSInput(char* smsSender, char* smsValue) {
   }
 
   if (strstr_P(smsValue, PSTR("aux"))) {
-    handleKillSwitchReq(smsSender, smsValue, false);
+    handleKillSwitchReq(smsSender, smsValue);
     return;
   }
 
   if (strstr_P(smsValue, PSTR("fence"))) {
-    handleGeofenceReq(smsSender, smsValue, false);
+    handleGeofenceReq(smsSender, smsValue);
     return;
   }
 
