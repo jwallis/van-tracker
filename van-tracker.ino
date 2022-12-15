@@ -587,13 +587,13 @@ void watchDogForKillSwitch() {
     g_v_doorOpenedWhileDoorAlertActive = false;  // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
   }
 
-  if (g_v_startAttemptedWhileKillSwitchActive) {
-    char ownerPhoneNumber[15];
-    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
-
-    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted!"));
-    g_v_startAttemptedWhileKillSwitchActive = false;  // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
-  }
+//  if (g_v_startAttemptedWhileKillSwitchActive) {
+//    char ownerPhoneNumber[15];
+//    EEPROM.get(OWNERPHONENUMBER_CHAR_15, ownerPhoneNumber);
+//
+//    sendSMS(ownerPhoneNumber, F("WARNING!\\\\nStart attempted!"));
+//    g_v_startAttemptedWhileKillSwitchActive = false;  // whether sendSMS() is successful or not, set to false so we don't endlessly retry sending (could be bad if vehicle is out of cell range)
+//  }
 }
 
 void watchDogForFollow() {
@@ -803,12 +803,11 @@ void checkSMSInput() {
     // "contains" match
 #ifdef DOOR_ONLY_OPTION
     if (strstr_P(smsValue, PSTR("door"))) {
+      if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
+        continue;
 #else
     if (strstr_P(smsValue, PSTR("aux"))) {
 #endif
-      if (checkLockdownStatus(smsSender, smsValue, smsSlotNumber))
-        continue;
-
       if (handleKillSwitchReq(smsSender, smsValue))
         deleteSMS(smsSlotNumber);
       continue;
@@ -2362,27 +2361,27 @@ void starterISR() {
   // but if that's happening, this will show us on the debug output
   g_v_killSwitchInterruptDebug = true;
 
-  // If either door-open or start-attempt alert has already been triggered, let's just make sure it goes out and not interrupt whatever is going on
-  if (g_v_startAttemptedWhileKillSwitchActive || g_v_doorOpenedWhileDoorAlertActive)
-    return;
-
-  // If we're currently sending an SMS, don't screw up the SMS.
-  //    case 1: we're sending "Door open!" or "Start attempted!".  We REALLY want that to be successful, and sending the other alert doesn't add much value.
-  //    case 2: we're sending a response to the owner.  Odds are they're standing next to their van, it's not being stolen, so let's just be sure to respond successfully.
-  if (g_v_currentlySendingSMS)
-    return;
-
-  if (!g_v_killSwitchAndDoorAlertInitialized)
-    return;
-
-  if (!g_v_killSwitchAndDoorAlertActive)
-    return;
-
-  _delay_ms(400);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
-
-  // when starter is on, PIN is LOW
-  if (!digitalRead(STARTER_INTERRUPT_PIN))
-    g_v_startAttemptedWhileKillSwitchActive = true;
+//  // If either door-open or start-attempt alert has already been triggered, let's just make sure it goes out and not interrupt whatever is going on
+//  if (g_v_startAttemptedWhileKillSwitchActive || g_v_doorOpenedWhileDoorAlertActive)
+//    return;
+//
+//  // If we're currently sending an SMS, don't screw up the SMS.
+//  //    case 1: we're sending "Door open!" or "Start attempted!".  We REALLY want that to be successful, and sending the other alert doesn't add much value.
+//  //    case 2: we're sending a response to the owner.  Odds are they're standing next to their van, it's not being stolen, so let's just be sure to respond successfully.
+//  if (g_v_currentlySendingSMS)
+//    return;
+//
+//  if (!g_v_killSwitchAndDoorAlertInitialized)
+//    return;
+//
+//  if (!g_v_killSwitchAndDoorAlertActive)
+//    return;
+//
+//  _delay_ms(400);  // on some starters, turning to the key to the "accessory" mode might jump to 12V for just a few milliseconds, so let's wait - make sure someone is actually trying to start the car
+//
+//  // when starter is on, PIN is LOW
+//  if (!digitalRead(STARTER_INTERRUPT_PIN))
+//    g_v_startAttemptedWhileKillSwitchActive = true;
 }
 
 void doorISR() {
