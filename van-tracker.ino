@@ -56,7 +56,11 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-//  1. Any time we increase the size of a PROGMEM string and call sendSMS() with it,
+//  1. Any time we increase the size of a dynamic string we send in an SMS,
+//     be sure to check the size of variable "char hologramSMSString[n]"
+//     in function "bool sendSMS(char* send_to, char* message)"
+//
+//  2. Any time we increase the size of a PROGMEM string and call sendSMS() with it,
 //     be sure to check the size of variable "char message[n]"
 //     in function "bool sendSMS(char* send_to, const __FlashStringHelper* messageInProgmem)"
 
