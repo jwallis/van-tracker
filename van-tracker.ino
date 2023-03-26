@@ -508,7 +508,7 @@ void resetSystem() {
   setSimComFunctionality(true);
 
   setupSimCom();
-  waitUntilNetworkConnected(120);
+  waitUntilNetworkConnected(150);
   updateClock();
 
   updateLastResetTime();  
@@ -2488,8 +2488,15 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 4 = Unknown
 
     // if "not currently searching an operator to register to" or "registration denied" try setting network operator
+    // We prefer AT&T
     if ((netConn == 0 || netConn == 3) && i % 30 == 0) {
-      fona.setNetworkOperator(F("AT&T"));
+      if ((netConn == 0 || netConn == 3) && i % 60 == 0) {
+        // T-Mobile
+        fona.setNetworkOperator(F("310260"));
+      } else {
+        // AT&T
+        fona.setNetworkOperator(F("310410"));
+      }
     }
 
     if (netConn == 1 || netConn == 5) {
