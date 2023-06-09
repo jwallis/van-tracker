@@ -73,7 +73,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.3.5 Aux")
+#define VT_VERSION        F("VT 3.3.6 Aux")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -2465,7 +2465,7 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
-  for (int16_t i = secondsToWait-1; i > 0; i--) {
+  for (int16_t i = 0; i < secondsToWait; i++) {
     debugBlink(0,6);
 
     fona.setEchoOff();
@@ -2603,11 +2603,9 @@ void initSimCom() {
   }
   sendRawCommand(F("AT+CTZU=1"));             // Enable automatic time and time zone update via NITZ
 
-  fona.setNetworkOperator(F("AT&T"));         // Set Cellular OPerator Selection to "automatic"
-  sendRawCommand(F("AT+COPS=4,1,\"AT&T\""));  // ...this is really important, so I'm doubling up.
   sendRawCommand(F("AT+CMEE=0"));             // Turn off verbose mode
 
-  sendRawCommand(F("AT&W"));                // save writeable settings
+  sendRawCommand(F("AT&W"));                  // save writeable settings
 
   debugPrintln(F("End initSimCom()"));
 }
