@@ -73,7 +73,7 @@ Connection failure either to SimCom chip or cellular network (3 long followed by
 #define SERVER_NAME       F("cloudsocket.hologram.io")
 #define SERVER_PORT       9999
 
-#define VT_VERSION        F("VT 3.3.6 Aux")
+#define VT_VERSION        F("VT 3.3.7 Aux")
 
 //    ONLY ONE OF THE FOLLOWING CONFIGURATIONS CAN BE UNCOMMENTED AT A TIME
 //    Which VT model is this?
@@ -305,7 +305,7 @@ void loop() {
     }
     resetSystem();
   }
-  // > 1 is also bad - could not connect to cellular network, but we might have a valid clock
+  // > 1 is also bad - could not connect to cellular network, but we might have a valid clock, so we can still obey the kill switch schedule
   if (g_SimComConnectionStatus > 1) {
     debugBlink(3,g_SimComConnectionStatus);
     delay(2000);
@@ -2465,12 +2465,19 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
   // we're waiting 2s each loop
   secondsToWait = secondsToWait/2;
   
-  for (int16_t i = 0; i < secondsToWait; i++) {
+  for (int16_t i = 1; i < secondsToWait; i++) {
     debugBlink(0,6);
 
     fona.setEchoOff();
     netConn = fona.getNetworkStatus();
     debugPrintln(netConn);
+
+    // g_SimComConnectionStatus status meanings
+    // 0 = connected to cell network
+    // 1 = Failed to connect to SimCom chip
+    // 2 = Not registered on cell network
+    // 3 = Cell network registration denied
+    // 4 = Unknown
 
     // netConn status meanings:
     // 0 Not registered, not currently searching an operator to register to, the GPRS service is disabled
@@ -2480,17 +2487,19 @@ void waitUntilNetworkConnected(int16_t secondsToWait) {
     // 4 Unknown
     // 5 Registered, roaming
 
-    // g_SimComConnectionStatus status meanings
-    // 0 = connected to cell network
-    // 1 = Failed to connect to SimCom chip
-    // 2 = Not registered on cell network
-    // 3 = Cell network registration denied
-    // 4 = Unknown
+    // if connected, we're done
+    if (netConn == 1 || netConn == 5) {
+      debugPrintln(F("\nOK"));
+      g_SimComConnectionStatus = 0;
+      fona.setNetworkSettings(APN, F(""), F(""));
+      fona.TCPshut();
+      return;
+    }
 
-    // if "not currently searching an operator to register to" or "registration denied" try setting network operator
+    // if not connected, try setting network operator (AT+COPS)
     // We prefer AT&T
-    if ((netConn == 0 || netConn == 3) && i % 30 == 0) {
-      if ((netConn == 0 || netConn == 3) && i % 60 == 0) {
+    if (i % 30 == 0) {
+      if (i % 60 == 0) {
         // T-Mobile
         fona.setNetworkOperator(F("310260"));
       } else {
